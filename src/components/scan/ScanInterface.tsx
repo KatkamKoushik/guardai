@@ -327,7 +327,7 @@ export default function ScanInterface() {
                           <div className="flex items-center gap-2">
                             {result.details.virusTotal.skipped || result.details.virusTotal.detections === undefined ? (
                               <span className="px-2 py-1 text-[10px] font-mono rounded bg-white/10 text-white/50">
-                                UNAVAILABLE
+                                SKIPPED
                               </span>
                             ) : (
                               <>
@@ -348,7 +348,7 @@ export default function ScanInterface() {
                           <div className="flex items-center gap-2">
                             {result.details.googleSafeBrowsing.skipped ? (
                               <span className="px-2 py-1 text-[10px] font-mono rounded bg-white/10 text-white/50">
-                                UNAVAILABLE
+                                SKIPPED
                               </span>
                             ) : result.details.googleSafeBrowsing.status === 'clean' ? (
                               <span className="px-2 py-1 text-[10px] font-mono rounded bg-[#00FF66]/20 text-[#00FF66] flex items-center gap-1">

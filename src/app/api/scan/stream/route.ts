@@ -157,6 +157,7 @@ export async function GET(req: NextRequest) {
         let vtStatus = "clean";
         let vtDetections = 0;
         let vtTotal = 0;
+        let vtSkipped = false;
         const vtApiKey = process.env.VIRUSTOTAL_API_KEY;
 
         if (vtApiKey && vtApiKey.trim() !== "") {
@@ -186,10 +187,12 @@ export async function GET(req: NextRequest) {
             sendEvent({ step: "Threat Intel", status: "flagged", progress: 40, log: `VirusTotal error: ${error.message}` });
           }
         } else {
-          sendEvent({ step: "Threat Intel", status: "success", progress: 40, log: "VirusTotal skipped (API key missing)." });
+          vtSkipped = true;
+          sendEvent({ step: "Threat Intel", status: "flagged", progress: 40, log: "VirusTotal skipped (API key missing)." });
         }
 
         let gsbStatus = "clean";
+        let gsbSkipped = false;
         const gsbApiKey = process.env.GOOGLE_SAFE_BROWSING_API_KEY;
 
         if (gsbApiKey && gsbApiKey.trim() !== "") {
@@ -227,7 +230,8 @@ export async function GET(req: NextRequest) {
             sendEvent({ step: "Threat Intel", status: "flagged", progress: 50, log: `Google Safe Browsing error: ${error.message}` });
           }
         } else {
-          sendEvent({ step: "Threat Intel", status: "success", progress: 50, log: "Google Safe Browsing skipped (API key missing)." });
+          gsbSkipped = true;
+          sendEvent({ step: "Threat Intel", status: "flagged", progress: 50, log: "Google Safe Browsing skipped (API key missing)." });
         }
 
         // ==============================================
@@ -258,6 +262,7 @@ export async function GET(req: NextRequest) {
 
         let finalScore = 0;
         let threatLevel = "safe";
+        const isDataIncomplete = vtSkipped && gsbSkipped;
 
         if (gsbStatus === "flagged" || vtDetections > 4) {
           // CRITICAL OVERRIDE
@@ -274,6 +279,11 @@ export async function GET(req: NextRequest) {
           finalScore = Math.max(60, heuristicData.probability);
           threatLevel = "suspicious";
           sendEvent({ step: "Score Matrix", status: "flagged", progress: 90, log: "SUSPICIOUS: High ML Probability or Invalid SSL." });
+        } else if (isDataIncomplete) {
+          // INCOMPLETE THREAT DATA
+          finalScore = Math.max(30, heuristicData.probability);
+          threatLevel = "suspicious";
+          sendEvent({ step: "Score Matrix", status: "flagged", progress: 90, log: "INCOMPLETE DATA: Threat Intel engines skipped. Adjusting baseline risk." });
         } else {
           // SAFE
           finalScore = Math.max(0, heuristicData.probability);
@@ -289,8 +299,8 @@ export async function GET(req: NextRequest) {
           threatLevel,
           score: finalScore,
           details: {
-            virusTotal: { status: vtStatus, detections: vtDetections, total: Math.max(vtTotal, 1) },
-            googleSafeBrowsing: { status: gsbStatus },
+            virusTotal: { status: vtStatus, detections: vtDetections, total: Math.max(vtTotal, 1), skipped: vtSkipped },
+            googleSafeBrowsing: { status: gsbStatus, skipped: gsbSkipped },
             phishing: { probability: heuristicData.probability, indicators: heuristicData.flags },
             ssl: { valid: sslValid, issuer: sslIssuer, expiry: sslExpiry },
             reputation: { score: 100 - finalScore, category: "Unknown" },
