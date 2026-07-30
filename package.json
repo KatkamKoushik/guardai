@@ -38,6 +38,8 @@
     "ws": "^8.21.1"
   },
   "devDependencies": {
+    "@next/env": "^16.2.12",
+    "@prisma/config": "^7.9.1",
     "@tailwindcss/postcss": "^4",
     "@types/geoip-lite": "^1.4.4",
     "@types/node": "^20",

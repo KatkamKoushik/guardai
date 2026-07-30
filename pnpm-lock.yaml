@@ -93,6 +93,12 @@ importers:
         specifier: ^8.21.1
         version: 8.21.1
     devDependencies:
+      '@next/env':
+        specifier: ^16.2.12
+        version: 16.2.12
+      '@prisma/config':
+        specifier: ^7.9.1
+        version: 7.9.1
       '@tailwindcss/postcss':
         specifier: ^4
         version: 4.3.3
