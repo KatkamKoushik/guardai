@@ -1,0 +1,11 @@
+url,type,ip
+http://bad-malware.com/payload.exe,malware,185.11.12.13
+http://phishing-bank.com/login,phishing,82.112.14.15
+http://192.168.1.100/bot,botnet,23.45.67.89
+http://crypto-stealer.ru/run.js,malware,103.44.55.66
+http://fake-update.com/flash.exe,phishing,216.58.214.14
+http://hack-tool.net/exploit,exploit,45.33.22.11
+http://ransomware-c2.org/key,ransomware,91.22.33.44
+http://evil-domain.info/drop,malware,178.66.55.44
+http://stealer-logs.cc/admin,botnet,144.76.88.99
+http://fake-antivirus.com/scan,phishing,5.9.10.11
