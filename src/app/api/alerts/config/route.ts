@@ -19,7 +19,7 @@ export async function GET(req: Request) {
     }
 
     // Mask sensitive details before sending to client
-    const configs = user.notifications.map((notif) => {
+    const configs = user.notifications.map((notif: any) => {
       const configObj = notif.config as any;
       return {
         id: notif.id,
@@ -63,7 +63,7 @@ export async function PATCH(req: Request) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
-    const notif = user.notifications.find((n) => n.platform === platform);
+    const notif = user.notifications.find((n: any) => n.platform === platform);
     if (!notif) {
       return NextResponse.json({ error: "Integration not found" }, { status: 404 });
     }
