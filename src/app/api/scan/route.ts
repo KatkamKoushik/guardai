@@ -1,14 +1,34 @@
-import { NextResponse } from "next/server";
-import { analyzeURL } from "@/lib/heuristics";
-import net from "net";
+/**
+ * GuardAI — Scan API (POST /api/scan)
+ *
+ * Lightweight synchronous endpoint used by non-streaming callers.
+ * Primary features:
+ *   1. Strict input validation — rejects gibberish before any external call.
+ *   2. Auto-protocol prepend — bare domains get https:// prepended.
+ *   3. Private/local target block — SSRF protection.
+ *   4. Real VirusTotal v3 integration (graceful skip if key absent / call fails).
+ *   5. Real Google Safe Browsing v4 integration (graceful skip).
+ *   6. GuardAI Lexical Heuristics Engine — always runs, no external dependency.
+ */
 
-function normalizeUrl(input: string) {
-  return input.startsWith("http://") || input.startsWith("https://")
-    ? input
-    : `https://${input}`;
+import { NextResponse } from "next/server";
+import net from "net";
+import { analyzeURL, isGibberish } from "@/lib/heuristics";
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/** Prepend https:// when the user omits the protocol (e.g. "google.com"). */
+function normalizeUrl(input: string): string {
+  const trimmed = input.trim();
+  if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+    return trimmed;
+  }
+  return `https://${trimmed}`;
 }
 
-function isPrivateIPv4(ip: string) {
+function isPrivateIPv4(ip: string): boolean {
   const parts = ip.split(".").map(Number);
   if (parts.length !== 4 || parts.some((n) => Number.isNaN(n))) return false;
   if (parts[0] === 10) return true;
@@ -19,65 +39,102 @@ function isPrivateIPv4(ip: string) {
   return false;
 }
 
-function isDisallowedTarget(hostname: string) {
-  const normalized = hostname.toLowerCase();
-  if (
-    normalized === "localhost" ||
-    normalized.endsWith(".localhost") ||
-    normalized.endsWith(".local")
-  ) {
+/** SSRF guard — blocks localhost, .local, and RFC-1918 / loopback addresses. */
+function isDisallowedTarget(hostname: string): boolean {
+  const h = hostname.toLowerCase();
+  if (h === "localhost" || h.endsWith(".localhost") || h.endsWith(".local")) {
     return true;
   }
-
-  const ipType = net.isIP(normalized);
-  if (ipType === 4) {
-    return isPrivateIPv4(normalized);
-  }
-  if (ipType === 6) {
-    return normalized === "::1" || normalized.startsWith("fc") || normalized.startsWith("fd");
-  }
-
+  const ipType = net.isIP(h);
+  if (ipType === 4) return isPrivateIPv4(h);
+  if (ipType === 6) return h === "::1" || h.startsWith("fc") || h.startsWith("fd");
   return false;
 }
 
+// ---------------------------------------------------------------------------
+// POST /api/scan
+// ---------------------------------------------------------------------------
 export async function POST(request: Request) {
   try {
-    const { url } = await request.json();
-
-    if (!url) {
-      return NextResponse.json({ error: "URL is required" }, { status: 400 });
+    // ── 1. Parse body ──────────────────────────────────────────────────────
+    let body: { url?: string };
+    try {
+      body = await request.json();
+    } catch {
+      return NextResponse.json(
+        { error: "Invalid request body. Expected JSON with a 'url' field." },
+        { status: 400 }
+      );
     }
 
-    // Validate URL format
-    const targetUrl = normalizeUrl(url);
+    const rawInput = body.url?.trim() ?? "";
+
+    if (!rawInput) {
+      return NextResponse.json(
+        { error: "URL is required." },
+        { status: 400 }
+      );
+    }
+
+    // ── 2. Gibberish / invalid input guard ────────────────────────────────
+    if (isGibberish(rawInput)) {
+      return NextResponse.json(
+        {
+          error:
+            "Invalid Input: Please enter a valid domain or URL (e.g. google.com or https://example.com).",
+        },
+        { status: 400 }
+      );
+    }
+
+    // ── 3. Normalize & parse URL ──────────────────────────────────────────
+    const targetUrl = normalizeUrl(rawInput);
     let parsed: URL;
     try {
       parsed = new URL(targetUrl);
     } catch {
-      return NextResponse.json({ error: "Invalid URL format" }, { status: 400 });
-    }
-    if (isDisallowedTarget(parsed.hostname)) {
-      return NextResponse.json({ error: "Target is not allowed for security reasons" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Invalid URL format. Could not parse the supplied address." },
+        { status: 400 }
+      );
     }
 
+    // ── 4. SSRF protection ────────────────────────────────────────────────
+    if (isDisallowedTarget(parsed.hostname)) {
+      return NextResponse.json(
+        { error: "Target is not allowed for security reasons." },
+        { status: 400 }
+      );
+    }
+
+    // ── 5. GuardAI Lexical Heuristics (always runs — no external dependency)
     const heuristicData = analyzeURL(targetUrl);
 
-    let vtStatus = "clean";
+    // ── 6. VirusTotal v3 (graceful skip) ──────────────────────────────────
+    let vtStatus: string = "skipped";
     let vtDetections = 0;
-    let vtTotal = 1;
-    let gsbStatus = "clean";
+    let vtTotal = 0;
+    let vtSkipped = true;
 
-    const vtApiKey = process.env.VIRUSTOTAL_API_KEY;
+    const vtApiKey = process.env.VIRUSTOTAL_API_KEY?.trim();
     if (vtApiKey) {
+      vtSkipped = false;
       try {
+        // VT URL ID is url-safe base64 of the raw URL (no padding)
         const urlId = Buffer.from(targetUrl)
           .toString("base64")
           .replace(/=/g, "")
           .replace(/\+/g, "-")
           .replace(/\//g, "_");
-        const vtRes = await fetch(`https://www.virustotal.com/api/v3/urls/${urlId}`, {
-          headers: { "x-apikey": vtApiKey },
-        });
+
+        const vtRes = await fetch(
+          `https://www.virustotal.com/api/v3/urls/${urlId}`,
+          {
+            headers: { "x-apikey": vtApiKey },
+            signal: AbortSignal.timeout(8000),
+          }
+        );
+
         if (vtRes.ok) {
           const vtData = await vtRes.json();
           const stats = vtData?.data?.attributes?.last_analysis_stats;
@@ -89,15 +146,29 @@ export async function POST(request: Request) {
               (stats.undetected ?? 0) +
               (stats.harmless ?? 0);
             vtStatus = vtDetections > 0 ? "flagged" : "clean";
+          } else {
+            vtStatus = "clean";
           }
+        } else if (vtRes.status === 404) {
+          // URL not yet in VT database — treat as unknown/clean
+          vtStatus = "clean";
+        } else {
+          vtStatus = "error";
         }
       } catch {
-        vtStatus = "error";
+        // Network failure, timeout, parse error — degrade gracefully
+        vtStatus = "unavailable";
+        vtSkipped = true;
       }
     }
 
-    const gsbApiKey = process.env.GOOGLE_SAFE_BROWSING_API_KEY;
+    // ── 7. Google Safe Browsing v4 (graceful skip) ────────────────────────
+    let gsbStatus: string = "skipped";
+    let gsbSkipped = true;
+
+    const gsbApiKey = process.env.GOOGLE_SAFE_BROWSING_API_KEY?.trim();
     if (gsbApiKey) {
+      gsbSkipped = false;
       try {
         const gsbRes = await fetch(
           `https://safebrowsing.googleapis.com/v4/threatMatches:find?key=${gsbApiKey}`,
@@ -105,27 +176,39 @@ export async function POST(request: Request) {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              client: { clientId: "guardai", clientVersion: "1.0.0" },
+              client: { clientId: "guardai", clientVersion: "2.0.0" },
               threatInfo: {
-                threatTypes: ["MALWARE", "SOCIAL_ENGINEERING", "UNWANTED_SOFTWARE", "POTENTIALLY_HARMFUL_APPLICATION"],
+                threatTypes: [
+                  "MALWARE",
+                  "SOCIAL_ENGINEERING",
+                  "UNWANTED_SOFTWARE",
+                  "POTENTIALLY_HARMFUL_APPLICATION",
+                ],
                 platformTypes: ["ANY_PLATFORM"],
                 threatEntryTypes: ["URL"],
                 threatEntries: [{ url: targetUrl }],
               },
             }),
+            signal: AbortSignal.timeout(8000),
           }
         );
+
         if (gsbRes.ok) {
           const gsbData = await gsbRes.json();
-          gsbStatus = Array.isArray(gsbData?.matches) && gsbData.matches.length > 0 ? "flagged" : "clean";
+          gsbStatus =
+            Array.isArray(gsbData?.matches) && gsbData.matches.length > 0
+              ? "flagged"
+              : "clean";
         } else {
           gsbStatus = "error";
         }
       } catch {
-        gsbStatus = "error";
+        gsbStatus = "unavailable";
+        gsbSkipped = true;
       }
     }
 
+    // ── 8. Aggregate Score & Threat Level ─────────────────────────────────
     let score = heuristicData.probability;
     let threatLevel: "safe" | "suspicious" | "high" | "critical" = "safe";
 
@@ -140,7 +223,62 @@ export async function POST(request: Request) {
       score = heuristicData.probability;
     }
 
-    const result = {
+    // ── 9. Telemetry & Notifications (fire-and-forget, non-blocking) ──────
+    // Run async without awaiting so we don't add latency to the response.
+    void (async () => {
+      try {
+        if (score > 50) {
+          const { prisma } = await import("@/lib/db");
+          const isIPHostname = net.isIP(parsed.hostname) !== 0;
+
+          const telemetryRecord = await prisma.threatTelemetry.create({
+            data: {
+              domain: parsed.hostname,
+              threatType: threatLevel === "critical" ? "malware" : "suspicious",
+              ipAddress: isIPHostname ? parsed.hostname : null,
+              latitude: null,
+              longitude: null,
+              countryCode: null,
+              timestamp: new Date(),
+            },
+          });
+
+          if (score > 80) {
+            const { auth } = await import("@/lib/auth");
+            const session = await auth();
+            if (session?.user?.email) {
+              const user = await prisma.user.findUnique({
+                where: { email: session.user.email },
+              });
+              if (user?.id) {
+                const { notifyUserForScan } = await import("@/lib/notifications");
+                await notifyUserForScan(user.id, {
+                  url: targetUrl,
+                  score,
+                  severity: threatLevel === "critical" ? "critical" : "high",
+                  explanation: "A Live Deep Scan detected a high-risk threat on this target.",
+                  vtScore: vtSkipped
+                    ? "VirusTotal: skipped"
+                    : `${vtDetections} / ${Math.max(vtTotal, 1)} engines flagged`,
+                  sslStatus: targetUrl.startsWith("https://")
+                    ? "ENCRYPTED"
+                    : "UNENCRYPTED (HTTP Only)",
+                  missingHeaders: "Checked via heuristics",
+                  mlScore: `Phishing Probability: ${heuristicData.probability}%`,
+                  action: "Investigate immediately and block if necessary.",
+                  scanId: telemetryRecord.id,
+                });
+              }
+            }
+          }
+        }
+      } catch (telemetryErr) {
+        console.error("[scan/route] Telemetry/notification error:", telemetryErr);
+      }
+    })();
+
+    // ── 10. Build & Return Response ───────────────────────────────────────
+    return NextResponse.json({
       url: targetUrl,
       threatLevel,
       score,
@@ -150,6 +288,11 @@ export async function POST(request: Request) {
           status: vtStatus,
           detections: vtDetections,
           total: Math.max(vtTotal, 1),
+          skipped: vtSkipped,
+        },
+        googleSafeBrowsing: {
+          status: gsbStatus,
+          skipped: gsbSkipped,
         },
         phishing: {
           probability: heuristicData.probability,
@@ -162,83 +305,14 @@ export async function POST(request: Request) {
         },
         reputation: {
           score: 100 - score,
-          category: "Technology",
-        },
-        googleSafeBrowsing: {
-          status: gsbStatus,
+          category: "Unknown",
         },
       },
-    };
-
-    // 1. IP Geolocation (if target is IP)
-    let lat: number | null = null;
-    let lon: number | null = null;
-    let country: string | null = null;
-    let isIP = net.isIP(parsed.hostname);
-    
-    if (isIP) {
-      try {
-        const geoip = require('geoip-lite');
-        const geo = geoip.lookup(parsed.hostname);
-        if (geo) {
-          lat = geo.ll[0];
-          lon = geo.ll[1];
-          country = geo.country;
-        }
-      } catch (e) {
-        console.warn("Could not load geoip-lite");
-      }
-    }
-
-    // Attempt to get the session to associate the scan
-    const { auth } = require("@/lib/auth");
-    const session = await auth();
-    let userId = null;
-    if (session?.user?.email) {
-      const { prisma } = require("@/lib/db");
-      const user = await prisma.user.findUnique({ where: { email: session.user.email } });
-      if (user) userId = user.id;
-    }
-
-    // 2. Broadcast to Telemetry Stream (if score > 50)
-    if (score > 50) {
-      const { prisma } = require("@/lib/db");
-      const threatTelemetryRecord = await prisma.threatTelemetry.create({
-        data: {
-          domain: parsed.hostname,
-          threatType: threatLevel === "critical" ? "malware" : "suspicious",
-          ipAddress: isIP ? parsed.hostname : null,
-          latitude: lat,
-          longitude: lon,
-          countryCode: country,
-          timestamp: new Date()
-        }
-      });
-
-      // 3. Trigger Alert Integrations (if score > 80)
-      if (score > 80 && userId) {
-        const { notifyUserForScan } = require("@/lib/notifications");
-        
-        await notifyUserForScan(userId, {
-          url: targetUrl,
-          score: score,
-          severity: threatLevel === "critical" ? "critical" : "high",
-          explanation: `A Live Deep Scan detected a high-risk threat on this target.`,
-          vtScore: `${vtDetections} / ${Math.max(vtTotal, 1)} engines flagged as Malicious`,
-          sslStatus: targetUrl.startsWith("https://") ? "ENCRYPTED" : "UNENCRYPTED (HTTP Only)",
-          missingHeaders: "Checked via heuristic",
-          mlScore: `Phishing Probability: ${heuristicData.probability}%`,
-          action: "Investigate immediately and block if necessary.",
-          scanId: threatTelemetryRecord.id, // Using telemetry ID as mock scan ID
-        });
-      }
-    }
-
-    return NextResponse.json(result);
+    });
   } catch (error) {
-    console.error("Scan error:", error);
+    console.error("[scan/route] Unhandled error:", error);
     return NextResponse.json(
-      { error: "Internal server error" },
+      { error: "Internal server error. Please try again." },
       { status: 500 }
     );
   }

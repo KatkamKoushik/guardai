@@ -15,7 +15,7 @@ interface ScanResult {
     phishing: { probability: number; indicators: string[] };
     ssl: { valid: boolean; issuer: string; expiry: string };
     reputation: { score: number; category: string };
-    geoIp?: { query?: string; city?: string; country?: string; isp?: string; asn?: string } | null;
+    geoIp?: { query?: string; city?: string; country?: string; isp?: string; as?: string; asn?: string } | null;
     securityHeaders?: { hsts: boolean; xFrameOptions: boolean; csp: boolean } | null;
     domainInfo?: { registrar: string; age: string; creationDate: string } | null;
   };
@@ -397,18 +397,18 @@ export default function ScanInterface() {
                       </div>
                     </div>
 
-                    {/* Server Geolocation (Replaced IP & Geo Intelligence) */}
+                      {/* Server Geolocation */}
                     <div className="p-5 md:p-6 rounded-xl bg-white/5 border border-white/5 flex flex-col justify-center">
                       <div className="text-[10px] md:text-xs text-white/40 mb-3 font-mono">SERVER GEOLOCATION</div>
                       <div className="flex flex-col gap-2">
-                        <div className="text-sm md:text-base font-mono text-white/80">{result.details.geoIp?.query || "192.168.1.1"}</div>
+                        <div className="text-sm md:text-base font-mono text-white/80">{result.details.geoIp?.query || "IP Unavailable"}</div>
                         <div className="text-[10px] md:text-sm flex justify-between border-b border-white/5 pb-1">
                           <span className="text-white/40">Country</span> 
-                          <span className="font-medium text-white/80">{result.details.geoIp?.country || "United States"}</span>
+                          <span className="font-medium text-white/80">{result.details.geoIp?.country || "Unknown"}</span>
                         </div>
                         <div className="text-[10px] md:text-sm flex justify-between pt-1">
                           <span className="text-white/40">ASN</span> 
-                          <span className="font-medium text-white/80">{result.details.geoIp?.asn || "AS15169 Google LLC"}</span>
+                          <span className="font-medium text-white/80 truncate max-w-[160px]" title={result.details.geoIp?.asn || result.details.geoIp?.as || undefined}>{result.details.geoIp?.asn || result.details.geoIp?.as || "Unknown"}</span>
                         </div>
                       </div>
                     </div>
@@ -419,15 +419,15 @@ export default function ScanInterface() {
                       <div className="flex flex-col gap-2">
                         <div className="text-[10px] md:text-sm flex justify-between border-b border-white/5 pb-1">
                           <span className="text-white/40">Registrar</span> 
-                          <span className="font-medium text-white/80 text-right max-w-[120px] truncate" title={result.details.domainInfo?.registrar || "Namecheap, Inc."}>{result.details.domainInfo?.registrar || "Namecheap, Inc."}</span>
+                          <span className="font-medium text-white/80 text-right max-w-[120px] truncate" title={result.details.domainInfo?.registrar || undefined}>{result.details.domainInfo?.registrar || "Data Unavailable"}</span>
                         </div>
                         <div className="text-[10px] md:text-sm flex justify-between border-b border-white/5 pb-1">
                           <span className="text-white/40">Domain Age</span> 
-                          <span className="font-medium text-white/80">{result.details.domainInfo?.age || "5 Years, 12 Days"}</span>
+                          <span className="font-medium text-white/80">{result.details.domainInfo?.age || "Unknown"}</span>
                         </div>
                         <div className="text-[10px] md:text-sm flex justify-between pt-1">
                           <span className="text-white/40">Created</span> 
-                          <span className="font-medium text-white/80">{result.details.domainInfo?.creationDate || "2019-07-18"}</span>
+                          <span className="font-medium text-white/80">{result.details.domainInfo?.creationDate || "Unknown"}</span>
                         </div>
                       </div>
                     </div>

@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import dns from "dns/promises";
 import tls from "tls";
 import net from "net";
-import { analyzeURL } from "@/lib/heuristics";
+import { analyzeURL, isGibberish } from "@/lib/heuristics";
 import { auth } from "@/lib/auth";
 import { logAuditAction } from "@/lib/audit";
 
@@ -62,17 +62,44 @@ export async function GET(req: NextRequest) {
       };
 
       try {
+        // ── Input Validation Gate ───────────────────────────────────────
+        // Reject gibberish / non-domain strings before any network I/O.
+        if (isGibberish(targetUrl)) {
+          sendEvent({
+            step: "Initialization",
+            status: "error",
+            progress: 0,
+            log: "Invalid Input: Please enter a valid domain or URL (e.g. google.com or https://example.com).",
+          });
+          controller.close();
+          return;
+        }
+
         let hostname = "";
         try {
-          const parsed = new URL(targetUrl.startsWith("http") ? targetUrl : `https://${targetUrl}`);
+          // Auto-prepend https:// when protocol is absent
+          const normalizedTarget = targetUrl.startsWith("http")
+            ? targetUrl
+            : `https://${targetUrl}`;
+          const parsed = new URL(normalizedTarget);
           hostname = parsed.hostname;
           if (isDisallowedTarget(hostname)) {
-            sendEvent({ step: "Initialization", status: "error", progress: 10, log: "Target is not allowed for security reasons." });
+            sendEvent({
+              step: "Initialization",
+              status: "error",
+              progress: 10,
+              log: "Target is not allowed for security reasons.",
+            });
             controller.close();
             return;
           }
-        } catch (e) {
-          sendEvent({ step: "Initialization", status: "error", progress: 10, log: "Invalid URL format." });
+        } catch {
+          sendEvent({
+            step: "Initialization",
+            status: "error",
+            progress: 10,
+            log: "Invalid URL format.",
+          });
           controller.close();
           return;
         }
@@ -95,14 +122,34 @@ export async function GET(req: NextRequest) {
           sendEvent({ step: "Network Recon", status: "flagged", progress: 15, log: `DNS lookup failed (ECONNREFUSED/NXDOMAIN): ${error.message}` });
         }
 
-        let geoIp = null;
+        let geoIp: {
+          query?: string;
+          city?: string;
+          country?: string;
+          isp?: string;
+          as?: string;
+          asn?: string;
+        } | null = null;
         if (dnsRecords.length > 0) {
           try {
             sendEvent({ step: "Network Recon", status: "pending", progress: 17, log: `Fetching GeoIP data for ${dnsRecords[0]}...` });
-            const geoResponse = await fetch(`http://ip-api.com/json/${dnsRecords[0]}`);
+            const geoResponse = await fetch(`http://ip-api.com/json/${dnsRecords[0]}?fields=status,country,city,isp,as,query`);
             if (geoResponse.ok) {
-              geoIp = await geoResponse.json();
-              sendEvent({ step: "Network Recon", status: "success", progress: 19, log: `GeoIP: ${geoIp.city || 'Unknown'}, ${geoIp.country || 'Unknown'}` });
+              const raw = await geoResponse.json();
+              if (raw.status === "success") {
+                geoIp = {
+                  query: raw.query,
+                  city: raw.city,
+                  country: raw.country,
+                  isp: raw.isp,
+                  // ip-api returns ASN info in the `as` field (e.g. "AS15169 Google LLC")
+                  as: raw.as,
+                  asn: raw.as,
+                };
+                sendEvent({ step: "Network Recon", status: "success", progress: 19, log: `GeoIP: ${geoIp.city || 'Unknown'}, ${geoIp.country || 'Unknown'} | ${geoIp.asn || 'ASN Unknown'}` });
+              } else {
+                sendEvent({ step: "Network Recon", status: "flagged", progress: 19, log: `GeoIP lookup returned non-success status.` });
+              }
             }
           } catch (e) {
             console.error("GeoIP failed", e);
@@ -147,6 +194,71 @@ export async function GET(req: NextRequest) {
           sendEvent({ step: "Network Recon", status: "success", progress: 29, log: "Security Headers analyzed." });
         } catch (e) {
           sendEvent({ step: "Network Recon", status: "flagged", progress: 29, log: "Could not fetch Security Headers." });
+        }
+
+        // ==============================================
+        // STEP 1b: WHOIS / RDAP Domain Info
+        // ==============================================
+        let domainInfo: { registrar: string; creationDate: string; age: string } | null = null;
+        // Only attempt RDAP for hostnames (not raw IPs)
+        if (hostname && !net.isIP(hostname)) {
+          try {
+            sendEvent({ step: "Network Recon", status: "pending", progress: 29, log: `Querying RDAP registry for ${hostname}...` });
+            // Strip subdomains to get registrable domain (last two labels)
+            const labels = hostname.split(".");
+            const registrableDomain = labels.slice(-2).join(".");
+
+            // Query IANA RDAP bootstrap to find the right TLD registry
+            const rdapBootstrap = await fetch(`https://rdap.org/domain/${registrableDomain}`, {
+              signal: AbortSignal.timeout(5000),
+              headers: { Accept: "application/rdap+json" },
+            });
+
+            if (rdapBootstrap.ok) {
+              const rdapData = await rdapBootstrap.json();
+
+              // Extract registrar from `entities` with role "registrar"
+              let registrar = "Unknown";
+              if (Array.isArray(rdapData.entities)) {
+                const registrarEntity = rdapData.entities.find((e: any) =>
+                  Array.isArray(e.roles) && e.roles.includes("registrar")
+                );
+                if (registrarEntity?.vcardArray) {
+                  const fnEntry = registrarEntity.vcardArray[1]?.find(
+                    (v: any[]) => v[0] === "fn"
+                  );
+                  if (fnEntry) registrar = fnEntry[3] || "Unknown";
+                } else if (registrarEntity?.handle) {
+                  registrar = registrarEntity.handle;
+                }
+              }
+
+              // Extract registration date from events
+              let creationDate = "Unknown";
+              let age = "Unknown";
+              if (Array.isArray(rdapData.events)) {
+                const regEvent = rdapData.events.find(
+                  (ev: any) => ev.eventAction === "registration"
+                );
+                if (regEvent?.eventDate) {
+                  const created = new Date(regEvent.eventDate);
+                  creationDate = created.toISOString().split("T")[0];
+                  const diffMs = Date.now() - created.getTime();
+                  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+                  const years = Math.floor(diffDays / 365);
+                  const days = diffDays % 365;
+                  age = years > 0 ? `${years} Year${years > 1 ? "s" : ""}, ${days} Day${days !== 1 ? "s" : ""}` : `${diffDays} Days`;
+                }
+              }
+
+              domainInfo = { registrar, creationDate, age };
+              sendEvent({ step: "Network Recon", status: "success", progress: 30, log: `WHOIS: Registrar: ${registrar} | Created: ${creationDate}` });
+            } else {
+              sendEvent({ step: "Network Recon", status: "flagged", progress: 30, log: `RDAP lookup returned ${rdapBootstrap.status} — domain info unavailable.` });
+            }
+          } catch (e: any) {
+            sendEvent({ step: "Network Recon", status: "flagged", progress: 30, log: `RDAP/WHOIS lookup failed: ${e.message}` });
+          }
         }
 
         // ==============================================
@@ -305,6 +417,7 @@ export async function GET(req: NextRequest) {
             ssl: { valid: sslValid, issuer: sslIssuer, expiry: sslExpiry },
             reputation: { score: 100 - finalScore, category: "Unknown" },
             geoIp,
+            domainInfo,
             securityHeaders
           }
         };

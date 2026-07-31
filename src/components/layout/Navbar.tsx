@@ -35,10 +35,10 @@ export default function Navbar() {
         animate={{ y: 0 }}
         transition={{ duration: 0.8, delay: 3.5, ease: "easeOut" }}
         className={cn(
-          "fixed top-0 left-0 right-0 z-50 transition-all duration-500",
+          "fixed top-0 left-0 right-0 z-40 transition-all duration-500",
           isScrolled
-            ? "glass-strong py-3"
-            : "py-5 bg-transparent"
+            ? "bg-black/95 backdrop-blur-md shadow-lg py-3"
+            : "bg-black/95 backdrop-blur-md py-5"
         )}
       >
         <div className="max-w-7xl mx-auto px-6 flex items-center justify-between">
@@ -126,7 +126,7 @@ export default function Navbar() {
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
-            className="fixed inset-0 z-40 glass-strong pt-24 px-6 md:hidden"
+            className="fixed inset-0 z-50 bg-black pt-24 px-6 md:hidden"
           >
             <div className="flex flex-col gap-2">
               {navLinks.map((link, i) => (

@@ -75,7 +75,7 @@ export default function HeroSection() {
           className="mb-6"
         >
           <span
-            className="text-xs tracking-[0.5em] uppercase text-[#00F0FF]/60"
+            className="text-xs tracking-[0.5em] uppercase text-[#00F0FF]/60 whitespace-nowrap"
             style={{ fontFamily: "var(--font-mono)" }}
           >
             [ SYSTEM STATUS: ACTIVE ]
