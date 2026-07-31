@@ -10,11 +10,109 @@
  *   5. Real VirusTotal v3 integration (graceful skip if key absent / call fails).
  *   6. Real Google Safe Browsing v4 integration (graceful skip).
  *   7. GuardAI Lexical Heuristics Engine — always runs, no external dependency.
+ *   8. Real SSL/TLS certificate probing via Node tls module.
  */
 
 import { NextResponse } from "next/server";
 import net from "net";
+import tls from "tls";
 import { analyzeURL, isGibberish } from "@/lib/heuristics";
+
+// ---------------------------------------------------------------------------
+// SSL Certificate Probe
+// ---------------------------------------------------------------------------
+
+interface SSLResult {
+  valid: boolean;
+  issuer: string;
+  expiry: string;
+}
+
+/**
+ * Connects to `hostname:443` via TLS and extracts cert metadata.
+ *
+ * Key implementation details:
+ * - Strips protocol (https://) and any path/query from the raw URL before
+ *   connecting — this was the root cause of the "Unknown" bug when callers
+ *   passed full URLs rather than bare hostnames.
+ * - Uses a `settled` flag so that neither the error handler nor the timeout
+ *   can reject/resolve after the promise has already been settled, preventing
+ *   unhandled-rejection crashes.
+ * - 5-second timeout after which the socket is destroyed and we return a
+ *   graceful fallback.
+ */
+async function probeSSL(rawUrl: string): Promise<SSLResult> {
+  // Extract the bare hostname — strip protocol and path
+  let hostname: string;
+  try {
+    const parsed = new URL(rawUrl.startsWith("http") ? rawUrl : `https://${rawUrl}`);
+    hostname = parsed.hostname;
+  } catch {
+    return { valid: false, issuer: "Unknown", expiry: "Unknown" };
+  }
+
+  // Only probe HTTPS targets
+  if (!rawUrl.startsWith("https://") && !rawUrl.startsWith("//")) {
+    // HTTP-only — no TLS
+    return { valid: false, issuer: "N/A (HTTP)", expiry: "N/A" };
+  }
+
+  return new Promise<SSLResult>((resolve) => {
+    let settled = false;
+
+    const settle = (result: SSLResult) => {
+      if (settled) return;
+      settled = true;
+      resolve(result);
+    };
+
+    const timeoutHandle = setTimeout(() => {
+      socket.destroy();
+      settle({ valid: false, issuer: "Unknown", expiry: "Unknown" });
+    }, 5000);
+
+    const socket = tls.connect(
+      { host: hostname, port: 443, servername: hostname, rejectUnauthorized: false },
+      () => {
+        clearTimeout(timeoutHandle);
+        try {
+          const cert = socket.getPeerCertificate();
+          socket.destroy();
+
+          if (!cert || !cert.valid_to) {
+            settle({ valid: false, issuer: "Unknown", expiry: "Unknown" });
+            return;
+          }
+
+          const issuerOrg = Array.isArray(cert.issuer?.O)
+            ? cert.issuer.O[0]
+            : cert.issuer?.O;
+          const issuerCn = Array.isArray(cert.issuer?.CN)
+            ? cert.issuer.CN[0]
+            : cert.issuer?.CN;
+          const issuer = issuerOrg || issuerCn || "Unknown";
+
+          // cert.valid_to is in the format "Jul 31 00:00:00 2027 GMT"
+          const expiry = new Date(cert.valid_to).toLocaleDateString("en-US", {
+            year: "numeric",
+            month: "short",
+            day: "numeric",
+          });
+
+          settle({ valid: true, issuer, expiry });
+        } catch {
+          settle({ valid: false, issuer: "Unknown", expiry: "Unknown" });
+        }
+      }
+    );
+
+    socket.on("error", () => {
+      clearTimeout(timeoutHandle);
+      socket.destroy();
+      settle({ valid: false, issuer: "Unknown", expiry: "Unknown" });
+    });
+  });
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -243,10 +341,14 @@ export async function POST(request: Request) {
       }
     }
 
-    // ── 8. Aggregate Score & Threat Level ─────────────────────────────────
+    // ── 8a. SSL/TLS Certificate Probe ────────────────────────────────────
+    // probeSSL strips the protocol and path internally — this was the root
+    // cause of the "Unknown" bug when the full URL was passed to tls.connect.
+    const sslResult = await probeSSL(targetUrl);
+
+    // ── 8b. Aggregate Score & Threat Level ───────────────────────────────
     let score = heuristicData.probability;
-    const sslValid = targetUrl.startsWith("https://");
-    if (!sslValid && score < 80) {
+    if (!sslResult.valid && score < 80) {
       score = Math.min(score + 20, 100);
     }
     
@@ -338,9 +440,9 @@ export async function POST(request: Request) {
           indicators: heuristicData.flags,
         },
         ssl: {
-          valid: targetUrl.startsWith("https://"),
-          issuer: "Unknown",
-          expiry: "Unknown",
+          valid: sslResult.valid,
+          issuer: sslResult.issuer,
+          expiry: sslResult.expiry,
         },
         reputation: {
           score: 100 - score,

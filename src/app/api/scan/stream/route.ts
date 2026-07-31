@@ -202,22 +202,63 @@ export async function GET(req: NextRequest) {
         let sslExpiry = "Unknown";
 
         try {
-          const cert = await new Promise<tls.PeerCertificate>((resolve, reject) => {
-            const socket = tls.connect({ host: hostname, port: 443, servername: hostname }, () => {
-              const cert = socket.getPeerCertificate();
-              socket.end();
-              resolve(cert);
+          const sslProbe = await new Promise<{
+            valid: boolean;
+            issuer: string;
+            expiry: string;
+          }>((resolve) => {
+            let settled = false;
+            const settle = (result: { valid: boolean; issuer: string; expiry: string }) => {
+              if (settled) return;
+              settled = true;
+              resolve(result);
+            };
+
+            const timeoutHandle = setTimeout(() => {
+              socket.destroy();
+              settle({ valid: false, issuer: "Unknown", expiry: "Unknown" });
+            }, 5000);
+
+            const socket = tls.connect(
+              { host: hostname, port: 443, servername: hostname, rejectUnauthorized: false },
+              () => {
+                clearTimeout(timeoutHandle);
+                try {
+                  const cert = socket.getPeerCertificate();
+                  socket.destroy();
+                  if (!cert || !cert.valid_to) {
+                    settle({ valid: false, issuer: "Unknown", expiry: "Unknown" });
+                    return;
+                  }
+                  const issuerOrg = Array.isArray(cert.issuer?.O) ? cert.issuer.O[0] : cert.issuer?.O;
+                  const issuerCn = Array.isArray(cert.issuer?.CN) ? cert.issuer.CN[0] : cert.issuer?.CN;
+                  const issuer = issuerOrg || issuerCn || "Unknown";
+                  const expiry = new Date(cert.valid_to).toLocaleDateString("en-US", {
+                    year: "numeric", month: "short", day: "numeric",
+                  });
+                  settle({ valid: true, issuer, expiry });
+                } catch {
+                  settle({ valid: false, issuer: "Unknown", expiry: "Unknown" });
+                }
+              }
+            );
+
+            socket.on("error", () => {
+              clearTimeout(timeoutHandle);
+              socket.destroy();
+              settle({ valid: false, issuer: "Unknown", expiry: "Unknown" });
             });
-            socket.on('error', reject);
-            setTimeout(() => { socket.destroy(); reject(new Error("Timeout")); }, 3000);
           });
-          
-          sslValid = true;
-          const issuerOrg = Array.isArray(cert.issuer.O) ? cert.issuer.O[0] : cert.issuer.O;
-          const issuerCn = Array.isArray(cert.issuer.CN) ? cert.issuer.CN[0] : cert.issuer.CN;
-          sslIssuer = issuerOrg || issuerCn || "Unknown";
-          sslExpiry = new Date(cert.valid_to).toLocaleDateString();
-          sendEvent({ step: "Network Recon", status: "success", progress: 25, log: `SSL verified. Issuer: ${sslIssuer}` });
+
+          sslValid = sslProbe.valid;
+          sslIssuer = sslProbe.issuer;
+          sslExpiry = sslProbe.expiry;
+          if (sslValid) {
+            sendEvent({ step: "Network Recon", status: "success", progress: 25, log: `SSL verified. Issuer: ${sslIssuer}` });
+          } else {
+            sendEvent({ step: "Network Recon", status: "flagged", progress: 25, log: `SSL verification failed or missing (HTTP).` });
+          }
+
         } catch (error: any) {
           sendEvent({ step: "Network Recon", status: "flagged", progress: 25, log: `SSL verification failed or missing (HTTP).` });
         }
