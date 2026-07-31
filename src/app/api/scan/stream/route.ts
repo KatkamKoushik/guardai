@@ -126,6 +126,32 @@ export async function GET(req: NextRequest) {
             controller.close();
             return;
           }
+
+          const appHost = req.headers.get("host")?.split(":")[0];
+          if (hostname === appHost || hostname === "guardai-six.vercel.app") {
+            sendEvent({
+              step: "Complete",
+              status: "success",
+              progress: 100,
+              log: "Self-scan intercepted: Automatically marked as SAFE to prevent loop.",
+              result: {
+                url: targetUrl,
+                threatLevel: "safe",
+                score: 0,
+                status: "SELF_DOMAIN_DETECTED",
+                message: "Target is this application (GuardAI). Connection loop prevented.",
+                details: {
+                  virusTotal: { status: "CLEAN", detections: 0, total: 1, skipped: true },
+                  googleSafeBrowsing: { status: "CLEAN", skipped: true },
+                  phishing: { probability: 0, indicators: [] },
+                  ssl: { valid: true, issuer: "Vercel / AWS", expiry: "Valid" },
+                  reputation: { score: 100, category: "SELF_DOMAIN" }
+                }
+              }
+            });
+            controller.close();
+            return;
+          }
         } catch {
           sendEvent({
             step: "Initialization",
@@ -265,16 +291,98 @@ export async function GET(req: NextRequest) {
         }
 
         let securityHeaders = { hsts: false, xFrameOptions: false, csp: false };
+        let isDeadLink = false;
+        let adminOrLoginFound = false;
+        
         try {
-          sendEvent({ step: "Network Recon", status: "pending", progress: 28, log: "Fetching HTTP Security Headers..." });
-          const headResponse = await fetch(targetUrl.startsWith("http") ? targetUrl : `https://${targetUrl}`, { method: 'HEAD', signal: AbortSignal.timeout(3000) });
-          const headers = headResponse.headers;
-          securityHeaders.hsts = headers.has("strict-transport-security");
-          securityHeaders.xFrameOptions = headers.has("x-frame-options");
-          securityHeaders.csp = headers.has("content-security-policy");
-          sendEvent({ step: "Network Recon", status: "success", progress: 29, log: "Security Headers analyzed." });
+          sendEvent({ step: "Network Recon", status: "pending", progress: 28, log: "Performing Multi-Path Directory Probing..." });
+          
+          const baseUrl = targetUrl.startsWith("http") ? targetUrl : `https://${targetUrl}`;
+          const parsedBase = new URL(baseUrl);
+          
+          const pathsToProbe = [
+            { name: "Root", url: `${parsedBase.origin}/` },
+            { name: "Target", url: baseUrl },
+            { name: "Login", url: `${parsedBase.origin}/login` },
+            { name: "Admin", url: `${parsedBase.origin}/admin` }
+          ];
+
+          // Deduplicate if target is root
+          const uniqueProbes = pathsToProbe.filter((v, i, a) => a.findIndex(t => t.url === v.url) === i);
+
+          const probeResults = await Promise.allSettled(
+            uniqueProbes.map(async (probe) => {
+              const res = await fetch(probe.url, { method: "HEAD", signal: AbortSignal.timeout(1500) });
+              return { name: probe.name, url: probe.url, status: res.status, headers: res.headers, ok: res.ok };
+            })
+          );
+
+          let allFailed = true;
+          const probeLogs: string[] = [];
+
+          for (let i = 0; i < probeResults.length; i++) {
+            const result = probeResults[i];
+            const probeName = uniqueProbes[i].name;
+            
+            if (result.status === "fulfilled") {
+              const { status, headers, ok } = result.value;
+              probeLogs.push(`${probeName}: ${status}`);
+              
+              if (ok || (status < 500 && status !== 404)) {
+                 allFailed = false;
+              }
+              
+              if ((probeName === "Login" || probeName === "Admin") && status === 200) {
+                 adminOrLoginFound = true;
+              }
+
+              if (probeName === "Target" || probeName === "Root") {
+                 if (headers.has("strict-transport-security")) securityHeaders.hsts = true;
+                 if (headers.has("x-frame-options")) securityHeaders.xFrameOptions = true;
+                 if (headers.has("content-security-policy")) securityHeaders.csp = true;
+              }
+            } else {
+              probeLogs.push(`${probeName}: TIMEOUT`);
+            }
+          }
+
+          if (allFailed) {
+             sendEvent({ step: "Network Recon", status: "pending", progress: 29, log: `Native probes failed. Falling back to API-Ninjas URL Lookup...` });
+             
+             try {
+                const apiNinjasKey = process.env.API_NINJAS_KEY?.trim();
+                if (!apiNinjasKey) {
+                   isDeadLink = true;
+                   sendEvent({ step: "Network Recon", status: "flagged", progress: 29, log: `API-Ninjas key missing. Server unreachable.` });
+                } else {
+                   const fallbackRes = await fetch(`https://api.api-ninjas.com/v1/urllookup?url=${encodeURIComponent(targetUrl)}`, {
+                     headers: { 'X-Api-Key': apiNinjasKey },
+                     signal: AbortSignal.timeout(2000)
+                   });
+                   if (fallbackRes.ok) {
+                     const fallbackData = await fallbackRes.json();
+                     if (fallbackData.is_valid === false) {
+                        isDeadLink = true;
+                        sendEvent({ step: "Network Recon", status: "flagged", progress: 29, log: `API-Ninjas returned: OFFLINE. Server unreachable.` });
+                     } else {
+                        isDeadLink = false;
+                        sendEvent({ step: "Network Recon", status: "success", progress: 29, log: `API-Ninjas returned: ONLINE (Native probes blocked).` });
+                     }
+                   } else {
+                     isDeadLink = true;
+                     sendEvent({ step: "Network Recon", status: "flagged", progress: 29, log: `API-Ninjas check failed. Server unreachable.` });
+                   }
+                }
+             } catch (fallbackErr) {
+                isDeadLink = true;
+                sendEvent({ step: "Network Recon", status: "flagged", progress: 29, log: `API-Ninjas timeout/error. Server unreachable.` });
+             }
+          } else {
+             sendEvent({ step: "Network Recon", status: "success", progress: 29, log: `Probes completed [ ${probeLogs.join(" | ")} ]` });
+          }
         } catch (e) {
-          sendEvent({ step: "Network Recon", status: "flagged", progress: 29, log: "Could not fetch Security Headers." });
+          isDeadLink = true;
+          sendEvent({ step: "Network Recon", status: "flagged", progress: 29, log: "Directory Probing Failed (Network Error)." });
         }
 
         // ==============================================
@@ -372,6 +480,7 @@ export async function GET(req: NextRequest) {
                 sendEvent({ step: "Threat Intel", status: "flagged", progress: 40, log: "VirusTotal: Failed to parse API response." });
               }
             } else if (vtResponse.status === 404) {
+              vtStatus = "not_found";
               sendEvent({ step: "Threat Intel", status: "success", progress: 40, log: "VirusTotal: URL not found in recent scans." });
             } else {
               sendEvent({ step: "Threat Intel", status: "flagged", progress: 40, log: `VirusTotal API error: ${vtResponse.status}` });
@@ -433,6 +542,63 @@ export async function GET(req: NextRequest) {
         }
 
         // ==============================================
+        // STEP 2.5: Additional Threat Intel (AbuseIPDB & URLhaus)
+        // ==============================================
+        let abuseIpDbScore = 0;
+        let urlhausMalware = false;
+        
+        const abuseIpKey = process.env.ABUSEIPDB_KEY?.trim();
+        const urlhausKey = process.env.URLHAUS_KEY?.trim();
+
+        const threatPromises: Promise<void>[] = [];
+
+        if (abuseIpKey && dnsRecords.length > 0) {
+            threatPromises.push((async () => {
+                try {
+                    const res = await fetch(`https://api.abuseipdb.com/api/v2/check?ipAddress=${dnsRecords[0]}&maxAgeInDays=90`, {
+                        headers: { 'Key': abuseIpKey, 'Accept': 'application/json' },
+                        signal: AbortSignal.timeout(2000)
+                    });
+                    if (res.ok) {
+                        const data = await res.json();
+                        if (data?.data?.abuseConfidenceScore >= 50) {
+                            abuseIpDbScore = data.data.abuseConfidenceScore;
+                            sendEvent({ step: "Threat Intel", status: "flagged", progress: 52, log: `AbuseIPDB: IP flagged with ${abuseIpDbScore}% confidence.` });
+                        }
+                    }
+                } catch (e) {
+                    // Fail gracefully
+                }
+            })());
+        }
+
+        if (urlhausKey) {
+            threatPromises.push((async () => {
+                try {
+                    const res = await fetch(`https://urlhaus-api.abuse.ch/v1/url/`, {
+                        method: 'POST',
+                        headers: { 'Auth-Key': urlhausKey, 'Content-Type': 'application/x-www-form-urlencoded' },
+                        body: `url=${encodeURIComponent(targetUrl)}`,
+                        signal: AbortSignal.timeout(2000)
+                    });
+                    if (res.ok) {
+                        const data = await res.json();
+                        if (data.query_status === "ok" && data.url_status === "online") {
+                            urlhausMalware = true;
+                            sendEvent({ step: "Threat Intel", status: "flagged", progress: 54, log: `URLhaus: Active malware distribution site.` });
+                        }
+                    }
+                } catch (e) {
+                    // Fail gracefully
+                }
+            })());
+        }
+
+        if (threatPromises.length > 0) {
+            await Promise.allSettled(threatPromises);
+        }
+
+        // ==============================================
         // STEP 3: ML Lexical Analysis
         // ==============================================
         sendEvent({ step: "Lexical Analysis", status: "pending", progress: 55, log: "Extracting 15+ lexical features..." });
@@ -466,12 +632,29 @@ export async function GET(req: NextRequest) {
         if (!sslValid && finalScore < 80) {
           finalScore = Math.min(finalScore + 20, 100);
         }
+        
+        if (adminOrLoginFound && finalScore >= 30) {
+          // If a hidden admin/login panel is discovered on an already suspicious site, increase risk
+          finalScore = Math.min(finalScore + 15, 100);
+        }
 
-        if (gsbStatus === "flagged" || vtDetections > 4) {
+        if (abuseIpDbScore >= 50) {
+          finalScore = Math.min(finalScore + 30, 100);
+        }
+
+        if (urlhausMalware) {
+          finalScore = Math.min(finalScore + 40, 100);
+        }
+
+        if (isDeadLink) {
+          finalScore = 0;
+          threatLevel = "offline";
+          sendEvent({ step: "Score Matrix", status: "success", progress: 90, log: "OFFLINE: Target URL is dead or unreachable. Threat analysis skipped." });
+        } else if (gsbStatus === "flagged" || vtDetections >= 5 || urlhausMalware) {
           // CRITICAL OVERRIDE
           finalScore = 95;
           threatLevel = "critical";
-          sendEvent({ step: "Score Matrix", status: "error", progress: 90, log: "CRITICAL OVERRIDE: Confirmed Blacklisted / High VT Detections." });
+          sendEvent({ step: "Score Matrix", status: "error", progress: 90, log: "CRITICAL OVERRIDE: Confirmed Blacklisted / High VT Detections / Malware Source." });
         } else if (vtDetections >= 1 && vtDetections <= 3) {
           // HIGH RISK — VT detections only, NOT DNS failure
           finalScore = Math.max(85, finalScore);
@@ -479,7 +662,7 @@ export async function GET(req: NextRequest) {
           sendEvent({ step: "Score Matrix", status: "error", progress: 90, log: "HIGH RISK: Low VT Detections confirmed." });
         } else if (isUnreachable) {
           // UNREACHABLE — target server did not respond; we have no real threat data
-          threatLevel = finalScore >= 60 ? "suspicious" : "safe";
+          threatLevel = finalScore >= 60 ? "suspicious" : "offline";
           sendEvent({
             step: "Score Matrix",
             status: "flagged",

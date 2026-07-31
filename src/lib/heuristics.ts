@@ -204,6 +204,7 @@ export function analyzeURL(urlStr: string): HeuristicResult {
   let isNumberSubstituted = false;
   let isSuspiciousTLD = false;
   let isHexEncoded = false;
+  let matchedLegitBrand: string | undefined;
 
   if (!hasIP) {
     // ── Signal: Shannon Entropy ────────────────────────────────────────────
@@ -243,7 +244,7 @@ export function analyzeURL(urlStr: string): HeuristicResult {
     }
 
     // ── Signal: Suspicious Keywords in Domain ─────────────────────────────
-    const matchedLegitBrand = BRAND_NAMES.find(brand => 
+    matchedLegitBrand = BRAND_NAMES.find(brand => 
       hostname === `${brand}.com` || hostname.endsWith(`.${brand}.com`)
     );
 
@@ -289,17 +290,22 @@ export function analyzeURL(urlStr: string): HeuristicResult {
   let pathSuspiciousCount = 0;
   const pathMatchedKeywords: string[] = [];
   
-  for (const token of pathTokens) {
-    const lowerToken = token.toLowerCase();
-    for (const kw of PATH_SUSPICIOUS_KEYWORDS) {
-      if (lowerToken.includes(kw) && !pathMatchedKeywords.includes(kw)) {
-        pathSuspiciousCount++;
-        pathMatchedKeywords.push(kw);
+  // If the domain is a legitimate known brand (e.g. google.com), do not penalize path keywords like 'login'
+  // as it is common and legitimate for brands to use such paths.
+  if (!matchedLegitBrand) {
+    for (const token of pathTokens) {
+      const lowerToken = token.toLowerCase();
+      for (const kw of PATH_SUSPICIOUS_KEYWORDS) {
+        if (lowerToken.includes(kw) && !pathMatchedKeywords.includes(kw)) {
+          pathSuspiciousCount++;
+          pathMatchedKeywords.push(kw);
+        }
       }
     }
-  }
-  if (pathSuspiciousCount > 0) {
-    flags.push(`Suspicious path keywords detected: ${pathMatchedKeywords.join(", ")}`);
+
+    if (pathSuspiciousCount > 0) {
+      flags.push(`Suspicious path keywords detected: ${pathMatchedKeywords.join(", ")}`);
+    }
   }
 
   // ── Signal: Special Character Ratio ──────────────────────────────────

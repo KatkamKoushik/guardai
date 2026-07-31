@@ -27,7 +27,7 @@ interface ScanFeedItem {
   target: string;
   domain: string;
   score: number;
-  threatLevel: "safe" | "suspicious" | "high" | "critical";
+  threatLevel: "safe" | "suspicious" | "high" | "critical" | "offline";
   ipAddress: string | null;
   latitude: number | null;
   longitude: number | null;
@@ -48,6 +48,7 @@ interface TelemetryResponse {
 // ---------------------------------------------------------------------------
 
 const THREAT_CONFIG = {
+  offline:    { label: "OFFLINE",    color: "#888888", bg: "rgba(136,136,136,0.08)", border: "rgba(136,136,136,0.25)" },
   safe:       { label: "SAFE",       color: "#00FF66", bg: "rgba(0,255,102,0.08)",  border: "rgba(0,255,102,0.25)"  },
   suspicious: { label: "SUSPICIOUS", color: "#FFB800", bg: "rgba(255,184,0,0.08)",  border: "rgba(255,184,0,0.25)"  },
   high:       { label: "HIGH",       color: "#FF6B00", bg: "rgba(255,107,0,0.08)",  border: "rgba(255,107,0,0.25)"  },
@@ -55,7 +56,7 @@ const THREAT_CONFIG = {
 } as const;
 
 function getThreatConfig(level: string) {
-  return THREAT_CONFIG[level as keyof typeof THREAT_CONFIG] ?? THREAT_CONFIG.safe;
+  return THREAT_CONFIG[level as keyof typeof THREAT_CONFIG] ?? THREAT_CONFIG.offline;
 }
 
 function relativeTime(iso: string): string {

@@ -7,7 +7,7 @@ import MagneticButton from "@/components/ui/MagneticButton";
 
 interface ScanResult {
   url: string;
-  threatLevel: "safe" | "suspicious" | "high" | "critical";
+  threatLevel: "safe" | "suspicious" | "high" | "critical" | "offline";
   score: number;
   details: {
     virusTotal: { status: string; detections?: number; total?: number; skipped?: boolean };
@@ -60,12 +60,7 @@ export default function ScanInterface() {
     // Input Sanitization: Strip out relative paths, browser origins, and concatenated protocols
     let sanitizedUrl = url.trim();
 
-    // Remove current app origin if accidentally pasted
-    if (typeof window !== "undefined") {
-      sanitizedUrl = sanitizedUrl.replace(window.location.origin, "");
-    }
-    
-    // Strip trailing /scan if it was accidentally pasted
+    // Strip trailing /scan if it was accidentally pasted at the end of the domain
     sanitizedUrl = sanitizedUrl.replace(/\/scan\/?$/, "");
 
     // Find any "http://" or "https://" that isn't at the very beginning
@@ -142,6 +137,7 @@ export default function ScanInterface() {
   };
 
   const getThreatColor = (level: string) => {
+    if (level === "offline") return "#888888";
     if (level === "safe") return "#00FF66";
     if (level === "suspicious") return "#FFB800";
     if (level === "high") return "#FF6B35";
@@ -303,8 +299,8 @@ export default function ScanInterface() {
                     
                     {/* Score Matrix with Pulse if Critical */}
                     <motion.div 
-                      animate={result.threatLevel === "critical" ? { scale: [1, 1.02, 1] } : {}}
-                      transition={result.threatLevel === "critical" ? { repeat: Infinity, duration: 1 } : {}}
+                      animate={(result.threatLevel === "critical" || result.threatLevel === "offline") ? { scale: [1, 1.02, 1] } : {}}
+                      transition={(result.threatLevel === "critical" || result.threatLevel === "offline") ? { repeat: Infinity, duration: 1 } : {}}
                       className="p-5 md:p-6 rounded-xl bg-white/5 border border-white/5 flex flex-col justify-center items-center text-center col-span-1"
                     >
                       <div className="relative w-20 h-20 md:w-24 md:h-24 mb-4">
@@ -319,7 +315,7 @@ export default function ScanInterface() {
                             strokeWidth="8"
                             strokeLinecap="round"
                             strokeDasharray={`${result.score * 2.51} 251`}
-                            animate={result.threatLevel === "critical" ? { filter: ["drop-shadow(0 0 10px #FF003C)", "drop-shadow(0 0 20px #FF003C)", "drop-shadow(0 0 10px #FF003C)"] } : {}}
+                            animate={(result.threatLevel === "critical" || result.threatLevel === "offline") ? { filter: [`drop-shadow(0 0 10px ${threatColor})`, `drop-shadow(0 0 20px ${threatColor})`, `drop-shadow(0 0 10px ${threatColor})`] } : {}}
                             transition={{ repeat: Infinity, duration: 1 }}
                           />
                         </svg>
@@ -333,7 +329,7 @@ export default function ScanInterface() {
                         <motion.div 
                           className="text-lg md:text-xl font-bold uppercase tracking-wider mb-1" 
                           style={{ color: threatColor, fontFamily: "var(--font-heading)" }}
-                          animate={result.threatLevel === "critical" ? { color: ["#FF003C", "#FF4D79", "#FF003C"] } : {}}
+                          animate={(result.threatLevel === "critical" || result.threatLevel === "offline") ? { opacity: [1, 0.5, 1] } : {}}
                           transition={{ repeat: Infinity, duration: 1 }}
                         >
                           {result.threatLevel}
@@ -367,6 +363,14 @@ export default function ScanInterface() {
                               const isFailed = [
                                 "error", "unavailable", "timeout",
                               ].includes(vt.status);
+                              // Not found in VT database
+                              if (vt.status === "not_found") {
+                                return (
+                                  <span className="px-2 py-1 text-[10px] font-mono rounded bg-white/20 text-white/70">
+                                    NOT FOUND
+                                  </span>
+                                );
+                              }
                               // Low engine count: suspiciously few engines (cached/partial result)
                               const isLowCount =
                                 vt.total === undefined ||
@@ -534,12 +538,13 @@ export default function ScanInterface() {
                     {/* Remediation Advice Box */}
                     <div className="col-span-1 md:col-span-2 lg:col-span-3 p-5 md:p-6 rounded-xl bg-white/5 border border-white/5 flex flex-col justify-center">
                       <div className="text-[10px] md:text-xs text-white/40 mb-2 font-mono">RECOMMENDED ACTION</div>
-                      <div className="text-xs md:text-sm text-white/80 font-medium">
-                        {result.threatLevel === "critical" ? "Critical Risk: Isolate affected endpoints immediately and block IOCs at network perimeter." :
+                      <p className="text-xs md:text-sm text-white/80 font-medium">
+                        {result.threatLevel === "offline" ? "Offline/Dead Link: Target server is unreachable or returned 404 Not Found. Cannot reliably scan." :
+                         result.threatLevel === "critical" ? "Critical Risk: Isolate affected endpoints immediately and block IOCs at network perimeter." :
                          result.threatLevel === "high" ? "High Risk: Block at network perimeter and investigate affected endpoints." :
                          result.threatLevel === "suspicious" ? "Suspicious: Monitor traffic closely and restrict user access." :
                          "Safe: No immediate action required. Continue standard monitoring."}
-                      </div>
+                      </p>
                     </div>
 
                   </div>

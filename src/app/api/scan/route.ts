@@ -16,6 +16,7 @@
 import { NextResponse } from "next/server";
 import net from "net";
 import tls from "tls";
+import dns from "dns";
 import { analyzeURL, isGibberish } from "@/lib/heuristics";
 
 // ---------------------------------------------------------------------------
@@ -240,6 +241,25 @@ export async function POST(request: Request) {
       });
     }
 
+    const appHost = request.headers.get("host")?.split(":")[0];
+    if (parsed.hostname === appHost || parsed.hostname === "guardai-six.vercel.app") {
+      return NextResponse.json({
+        url: targetUrl,
+        threatLevel: "safe",
+        score: 0,
+        status: "SELF_DOMAIN_DETECTED",
+        message: "Target is this application (GuardAI). Connection loop prevented.",
+        scannedAt: new Date().toISOString(),
+        details: {
+          virusTotal: { status: "CLEAN", detections: 0, total: 1, skipped: true },
+          googleSafeBrowsing: { status: "CLEAN", skipped: true },
+          phishing: { probability: 0, indicators: [] },
+          ssl: { valid: true, issuer: "Vercel / AWS", expiry: "Valid" },
+          reputation: { score: 100, category: "SELF_DOMAIN" }
+        }
+      });
+    }
+
     // ── 5. GuardAI Lexical Heuristics (always runs — no external dependency)
     const heuristicData = analyzeURL(targetUrl);
 
@@ -284,7 +304,7 @@ export async function POST(request: Request) {
           }
         } else if (vtRes.status === 404) {
           // URL not yet in VT database — treat as unknown/clean
-          vtStatus = "clean";
+          vtStatus = "not_found";
         } else {
           vtStatus = "error";
         }
@@ -341,20 +361,156 @@ export async function POST(request: Request) {
       }
     }
 
-    // ── 8a. SSL/TLS Certificate Probe ────────────────────────────────────
-    // probeSSL strips the protocol and path internally — this was the root
-    // cause of the "Unknown" bug when the full URL was passed to tls.connect.
+    // ── 7.5. Additional Threat Intel (AbuseIPDB & URLhaus) ───────────────────
+    let abuseIpDbScore = 0;
+    let urlhausMalware = false;
+    
+    const abuseIpKey = process.env.ABUSEIPDB_KEY?.trim();
+    const urlhausKey = process.env.URLHAUS_KEY?.trim();
+
+    const threatPromises: Promise<void>[] = [];
+
+    if (abuseIpKey) {
+        threatPromises.push((async () => {
+            try {
+                // Resolve IP first for AbuseIPDB
+                const addresses = await dns.promises.resolve(parsed.hostname);
+                const resolvedIp = addresses[0];
+                if (resolvedIp) {
+                  const res = await fetch(`https://api.abuseipdb.com/api/v2/check?ipAddress=${resolvedIp}&maxAgeInDays=90`, {
+                      headers: { 'Key': abuseIpKey, 'Accept': 'application/json' },
+                      signal: AbortSignal.timeout(2000)
+                  });
+                  if (res.ok) {
+                      const data = await res.json();
+                      if (data?.data?.abuseConfidenceScore >= 50) {
+                          abuseIpDbScore = data.data.abuseConfidenceScore;
+                      }
+                  }
+                }
+            } catch (e) {
+                // Fail gracefully
+            }
+        })());
+    }
+
+    if (urlhausKey) {
+        threatPromises.push((async () => {
+            try {
+                const res = await fetch(`https://urlhaus-api.abuse.ch/v1/url/`, {
+                    method: 'POST',
+                    headers: { 'Auth-Key': urlhausKey, 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: `url=${encodeURIComponent(targetUrl)}`,
+                    signal: AbortSignal.timeout(2000)
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.query_status === "ok" && data.url_status === "online") {
+                        urlhausMalware = true;
+                    }
+                }
+            } catch (e) {
+                // Fail gracefully
+            }
+        })());
+    }
+
+    if (threatPromises.length > 0) {
+        await Promise.allSettled(threatPromises);
+    }
+
+    // ── 8a. Multi-Path Directory Probing ─────────────────────────────────
+    let isDeadLink = false;
+    let adminOrLoginFound = false;
+    try {
+      const baseUrl = targetUrl.startsWith("http") ? targetUrl : `https://${targetUrl}`;
+      const parsedBase = new URL(baseUrl);
+      
+      const pathsToProbe = [
+        { name: "Root", url: `${parsedBase.origin}/` },
+        { name: "Target", url: baseUrl },
+        { name: "Login", url: `${parsedBase.origin}/login` },
+        { name: "Admin", url: `${parsedBase.origin}/admin` }
+      ];
+
+      const uniqueProbes = pathsToProbe.filter((v, i, a) => a.findIndex(t => t.url === v.url) === i);
+
+      const probeResults = await Promise.allSettled(
+        uniqueProbes.map(async (probe) => {
+          const res = await fetch(probe.url, { method: "HEAD", signal: AbortSignal.timeout(1500) });
+          return { name: probe.name, status: res.status, ok: res.ok };
+        })
+      );
+
+      let allFailed = true;
+
+      for (const result of probeResults) {
+        if (result.status === "fulfilled") {
+          const { status, ok, name } = result.value;
+          if (ok || (status < 500 && status !== 404)) {
+             allFailed = false;
+          }
+          if ((name === "Login" || name === "Admin") && status === 200) {
+             adminOrLoginFound = true;
+          }
+        }
+      }
+
+      if (allFailed) {
+         try {
+            const apiNinjasKey = process.env.API_NINJAS_KEY?.trim();
+            if (!apiNinjasKey) {
+               isDeadLink = true;
+            } else {
+               const fallbackRes = await fetch(`https://api.api-ninjas.com/v1/urllookup?url=${encodeURIComponent(targetUrl)}`, {
+                 headers: { 'X-Api-Key': apiNinjasKey },
+                 signal: AbortSignal.timeout(2000)
+               });
+               if (fallbackRes.ok) {
+                 const fallbackData = await fallbackRes.json();
+                 if (fallbackData.is_valid === false) {
+                    isDeadLink = true;
+                 } else {
+                    isDeadLink = false;
+                 }
+               } else {
+                 isDeadLink = true;
+               }
+            }
+         } catch (fallbackErr) {
+            isDeadLink = true;
+         }
+      }
+    } catch (e) {
+      isDeadLink = true;
+    }
+
+    // ── 8b. SSL/TLS Certificate Probe ────────────────────────────────────
     const sslResult = await probeSSL(targetUrl);
 
-    // ── 8b. Aggregate Score & Threat Level ───────────────────────────────
+    // ── 8c. Aggregate Score & Threat Level ───────────────────────────────
     let score = heuristicData.probability;
     if (!sslResult.valid && score < 80) {
       score = Math.min(score + 20, 100);
     }
+    if (adminOrLoginFound && score >= 30) {
+      score = Math.min(score + 15, 100);
+    }
     
-    let threatLevel: "safe" | "suspicious" | "high" | "critical" = "safe";
+    if (abuseIpDbScore >= 50) {
+      score = Math.min(score + 30, 100);
+    }
 
-    if (gsbStatus === "flagged" || vtDetections >= 5) {
+    if (urlhausMalware) {
+      score = Math.min(score + 40, 100);
+    }
+    
+    let threatLevel: "safe" | "suspicious" | "high" | "critical" | "offline" = "safe";
+
+    if (isDeadLink) {
+      threatLevel = "offline";
+      score = 0;
+    } else if (gsbStatus === "flagged" || vtDetections >= 5 || urlhausMalware) {
       threatLevel = "critical";
       score = 95;
     } else if (vtDetections >= 1) {
