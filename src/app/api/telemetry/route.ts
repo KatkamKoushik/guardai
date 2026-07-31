@@ -84,9 +84,9 @@ export async function GET() {
       { headers }
     );
   } catch (error) {
-    console.error("[telemetry] Failed to fetch live data:", error);
+    console.error("TELEMETRY DB ERROR:", error);
     return NextResponse.json(
-      { error: "Failed to fetch telemetry data." },
+      { error: error instanceof Error ? error.message : String(error) },
       { status: 500 }
     );
   }

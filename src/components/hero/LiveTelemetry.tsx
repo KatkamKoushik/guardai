@@ -167,6 +167,8 @@ export default function LiveTelemetry({
         >
           {loading ? (
             <span className="opacity-40">—</span>
+          ) : error ? (
+            <span className="text-red-500 text-lg">ERR</span>
           ) : (
             <AnimatedNumber value={data?.totalScans ?? 0} />
           )}
@@ -187,6 +189,8 @@ export default function LiveTelemetry({
         >
           {loading ? (
             <span className="opacity-40">—</span>
+          ) : error ? (
+            <span className="text-red-500 text-lg">ERR</span>
           ) : (
             <AnimatedNumber value={data?.totalThreats ?? 0} />
           )}
