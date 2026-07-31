@@ -106,7 +106,9 @@ async function probeSSL(rawUrl: string): Promise<SSLResult> {
         }
       }
     );
-
+    socket.on("error", (err) => {
+      clearTimeout(timeoutHandle);
+      socket.destroy();
       settle({ valid: false, issuer: "Unknown", expiry: "Unknown", error: err.message || "Socket Error" });
     });
   });
