@@ -26,6 +26,7 @@ interface SSLResult {
   valid: boolean;
   issuer: string;
   expiry: string;
+  error?: string;
 }
 
 /**
@@ -47,14 +48,14 @@ async function probeSSL(rawUrl: string): Promise<SSLResult> {
   try {
     const parsed = new URL(rawUrl.startsWith("http") ? rawUrl : `https://${rawUrl}`);
     hostname = parsed.hostname;
-  } catch {
-    return { valid: false, issuer: "Unknown", expiry: "Unknown" };
+  } catch (err: any) {
+    return { valid: false, issuer: "Unknown", expiry: "Unknown", error: "Invalid URL Format" };
   }
 
   // Only probe HTTPS targets
   if (!rawUrl.startsWith("https://") && !rawUrl.startsWith("//")) {
     // HTTP-only — no TLS
-    return { valid: false, issuer: "N/A (HTTP)", expiry: "N/A" };
+    return { valid: false, issuer: "N/A (HTTP)", expiry: "N/A", error: "Unencrypted Protocol" };
   }
 
   return new Promise<SSLResult>((resolve) => {
@@ -68,7 +69,7 @@ async function probeSSL(rawUrl: string): Promise<SSLResult> {
 
     const timeoutHandle = setTimeout(() => {
       socket.destroy();
-      settle({ valid: false, issuer: "Unknown", expiry: "Unknown" });
+      settle({ valid: false, issuer: "Unknown", expiry: "Unknown", error: "Connection Timeout" });
     }, 5000);
 
     const socket = tls.connect(
@@ -80,7 +81,7 @@ async function probeSSL(rawUrl: string): Promise<SSLResult> {
           socket.destroy();
 
           if (!cert || !cert.valid_to) {
-            settle({ valid: false, issuer: "Unknown", expiry: "Unknown" });
+            settle({ valid: false, issuer: "Unknown", expiry: "Unknown", error: "No Certificate Returned" });
             return;
           }
 
@@ -100,16 +101,13 @@ async function probeSSL(rawUrl: string): Promise<SSLResult> {
           });
 
           settle({ valid: true, issuer, expiry });
-        } catch {
-          settle({ valid: false, issuer: "Unknown", expiry: "Unknown" });
+        } catch (err: any) {
+          settle({ valid: false, issuer: "Unknown", expiry: "Unknown", error: err.message || "Certificate Parsing Failed" });
         }
       }
     );
 
-    socket.on("error", () => {
-      clearTimeout(timeoutHandle);
-      socket.destroy();
-      settle({ valid: false, issuer: "Unknown", expiry: "Unknown" });
+      settle({ valid: false, issuer: "Unknown", expiry: "Unknown", error: err.message || "Socket Error" });
     });
   });
 }

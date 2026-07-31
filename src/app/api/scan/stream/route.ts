@@ -206,9 +206,10 @@ export async function GET(req: NextRequest) {
             valid: boolean;
             issuer: string;
             expiry: string;
+            error?: string;
           }>((resolve) => {
             let settled = false;
-            const settle = (result: { valid: boolean; issuer: string; expiry: string }) => {
+            const settle = (result: { valid: boolean; issuer: string; expiry: string; error?: string }) => {
               if (settled) return;
               settled = true;
               resolve(result);
@@ -216,7 +217,7 @@ export async function GET(req: NextRequest) {
 
             const timeoutHandle = setTimeout(() => {
               socket.destroy();
-              settle({ valid: false, issuer: "Unknown", expiry: "Unknown" });
+              settle({ valid: false, issuer: "Unknown", expiry: "Unknown", error: "Connection Timeout" });
             }, 5000);
 
             const socket = tls.connect(
@@ -227,7 +228,7 @@ export async function GET(req: NextRequest) {
                   const cert = socket.getPeerCertificate();
                   socket.destroy();
                   if (!cert || !cert.valid_to) {
-                    settle({ valid: false, issuer: "Unknown", expiry: "Unknown" });
+                    settle({ valid: false, issuer: "Unknown", expiry: "Unknown", error: "No Certificate Returned" });
                     return;
                   }
                   const issuerOrg = Array.isArray(cert.issuer?.O) ? cert.issuer.O[0] : cert.issuer?.O;
@@ -237,16 +238,16 @@ export async function GET(req: NextRequest) {
                     year: "numeric", month: "short", day: "numeric",
                   });
                   settle({ valid: true, issuer, expiry });
-                } catch {
-                  settle({ valid: false, issuer: "Unknown", expiry: "Unknown" });
+                } catch (err: any) {
+                  settle({ valid: false, issuer: "Unknown", expiry: "Unknown", error: err.message || "Certificate Parsing Failed" });
                 }
               }
             );
 
-            socket.on("error", () => {
+            socket.on("error", (err) => {
               clearTimeout(timeoutHandle);
               socket.destroy();
-              settle({ valid: false, issuer: "Unknown", expiry: "Unknown" });
+              settle({ valid: false, issuer: "Unknown", expiry: "Unknown", error: err.message || "Socket Error" });
             });
           });
 

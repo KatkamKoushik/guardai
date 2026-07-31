@@ -13,7 +13,7 @@ interface ScanResult {
     virusTotal: { status: string; detections?: number; total?: number; skipped?: boolean };
     googleSafeBrowsing: { status: string; skipped?: boolean };
     phishing: { probability: number; indicators: string[] };
-    ssl: { valid: boolean; issuer: string; expiry: string };
+    ssl: { valid: boolean; issuer: string; expiry: string; error?: string };
     reputation: { score: number; category: string };
     geoIp?: { query?: string; city?: string; country?: string; isp?: string; as?: string; asn?: string } | null;
     securityHeaders?: { hsts: boolean; xFrameOptions: boolean; csp: boolean } | null;
@@ -497,7 +497,9 @@ export default function ScanInterface() {
                       <div className="text-[10px] md:text-xs text-white/40 mb-3 font-mono">SSL / TLS CERTIFICATE</div>
                       <div className="flex items-center gap-3 mb-4">
                         <div className={`w-3 h-3 rounded-full ${result.details.ssl.valid ? 'bg-[#00FF66]' : 'bg-[#FF003C]'}`} />
-                        <div className="text-sm md:text-base font-medium truncate" title={result.details.ssl.issuer}>{result.details.ssl.issuer}</div>
+                        <div className="text-sm md:text-base font-medium truncate" title={result.details.ssl.error || result.details.ssl.issuer}>
+                          {!result.details.ssl.valid && result.details.ssl.error ? result.details.ssl.error : result.details.ssl.issuer}
+                        </div>
                       </div>
                       <div className="text-[10px] md:text-xs text-white/50 font-mono">EXPIRES: {result.details.ssl.expiry}</div>
                     </div>
