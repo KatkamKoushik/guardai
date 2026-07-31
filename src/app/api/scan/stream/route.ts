@@ -411,14 +411,14 @@ export async function GET(req: NextRequest) {
         sendEvent({ step: "Score Matrix", status: "pending", progress: 85, log: "Aggregating threat matrices with severity overrides..." });
         await new Promise(r => setTimeout(r, 500));
 
-        let finalScore = 0;
         let threatLevel = "safe";
         const isDataIncomplete = vtSkipped && gsbSkipped;
-
-        // ── Determine if the target is completely unreachable ─────────────
-        // A DNS/network failure alone is NOT threat evidence. It means we have
-        // no data, not that the target is malicious. Score from heuristics only.
         const isUnreachable = dnsFailed;
+
+        let finalScore = heuristicData.probability;
+        if (!sslValid && finalScore < 80) {
+          finalScore = Math.min(finalScore + 20, 100);
+        }
 
         if (gsbStatus === "flagged" || vtDetections > 4) {
           // CRITICAL OVERRIDE
@@ -427,32 +427,29 @@ export async function GET(req: NextRequest) {
           sendEvent({ step: "Score Matrix", status: "error", progress: 90, log: "CRITICAL OVERRIDE: Confirmed Blacklisted / High VT Detections." });
         } else if (vtDetections >= 1 && vtDetections <= 3) {
           // HIGH RISK — VT detections only, NOT DNS failure
-          finalScore = 85;
+          finalScore = Math.max(85, finalScore);
           threatLevel = "high";
           sendEvent({ step: "Score Matrix", status: "error", progress: 90, log: "HIGH RISK: Low VT Detections confirmed." });
         } else if (isUnreachable) {
           // UNREACHABLE — target server did not respond; we have no real threat data
-          finalScore = heuristicData.probability;
-          threatLevel = heuristicData.probability >= 60 ? "suspicious" : "safe";
+          threatLevel = finalScore >= 60 ? "suspicious" : "safe";
           sendEvent({
             step: "Score Matrix",
             status: "flagged",
             progress: 90,
-            log: `UNREACHABLE: Target server could not be reached. Threat intelligence unavailable. Score based on lexical analysis only: ${heuristicData.probability}.`,
+            log: `UNREACHABLE: Target server could not be reached. Threat intelligence unavailable. Score based on lexical analysis only: ${finalScore}.`,
           });
-        } else if (heuristicData.probability > 60 || !sslValid) {
+        } else if (finalScore >= 60) {
           // SUSPICIOUS
-          finalScore = Math.max(60, heuristicData.probability);
           threatLevel = "suspicious";
-          sendEvent({ step: "Score Matrix", status: "flagged", progress: 90, log: "SUSPICIOUS: High ML Probability or Invalid SSL." });
+          sendEvent({ step: "Score Matrix", status: "flagged", progress: 90, log: "SUSPICIOUS: High ML Probability or SSL penalty." });
         } else if (isDataIncomplete) {
           // INCOMPLETE THREAT DATA
-          finalScore = Math.max(30, heuristicData.probability);
-          threatLevel = "suspicious";
+          finalScore = Math.max(30, finalScore);
+          threatLevel = finalScore >= 60 ? "suspicious" : "safe";
           sendEvent({ step: "Score Matrix", status: "flagged", progress: 90, log: "INCOMPLETE DATA: Threat Intel engines skipped. Adjusting baseline risk." });
         } else {
           // SAFE
-          finalScore = Math.max(0, heuristicData.probability);
           threatLevel = "safe";
           sendEvent({ step: "Score Matrix", status: "success", progress: 90, log: "SAFE: Clean Threat Intel and Low ML Probability." });
         }
@@ -481,7 +478,7 @@ export async function GET(req: NextRequest) {
           targetUrl,
           "success",
           threatLevel,
-          `Scan completed with score ${finalScore}`,
+          JSON.stringify(resultData),
           userId
         );
 

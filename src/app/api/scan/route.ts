@@ -245,6 +245,11 @@ export async function POST(request: Request) {
 
     // ── 8. Aggregate Score & Threat Level ─────────────────────────────────
     let score = heuristicData.probability;
+    const sslValid = targetUrl.startsWith("https://");
+    if (!sslValid && score < 80) {
+      score = Math.min(score + 20, 100);
+    }
+    
     let threatLevel: "safe" | "suspicious" | "high" | "critical" = "safe";
 
     if (gsbStatus === "flagged" || vtDetections >= 5) {
@@ -252,10 +257,9 @@ export async function POST(request: Request) {
       score = 95;
     } else if (vtDetections >= 1) {
       threatLevel = "high";
-      score = Math.max(80, heuristicData.probability);
-    } else if (heuristicData.probability >= 60) {
+      score = Math.max(80, score);
+    } else if (score >= 60) {
       threatLevel = "suspicious";
-      score = heuristicData.probability;
     }
 
     // ── 9. Telemetry & Notifications (Awaited for Serverless) ──────

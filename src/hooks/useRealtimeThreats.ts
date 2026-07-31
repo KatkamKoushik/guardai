@@ -29,8 +29,27 @@ export function useRealtimeThreats(): RealtimeThreatsState {
   const eventSourceRef = useRef<EventSource | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastMessageTimeRef = useRef<number>(Date.now());
+  const fallbackPollRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
+    function fetchInitial() {
+      fetch("/api/telemetry")
+        .then(res => res.json())
+        .then(data => {
+          if (data.items && data.items.length > 0) {
+            setLatestThreats(data.items);
+            if (fallbackPollRef.current) clearInterval(fallbackPollRef.current);
+          } else {
+            if (!fallbackPollRef.current) {
+              fallbackPollRef.current = setInterval(fetchInitial, 5000);
+            }
+          }
+        })
+        .catch(err => console.error("Failed to fetch initial telemetry", err));
+    }
+    
+    fetchInitial();
+
     function connect() {
       if (eventSourceRef.current) {
         eventSourceRef.current.close();
@@ -90,6 +109,9 @@ export function useRealtimeThreats(): RealtimeThreatsState {
       }
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current);
+      }
+      if (fallbackPollRef.current) {
+        clearInterval(fallbackPollRef.current);
       }
     };
   }, []);

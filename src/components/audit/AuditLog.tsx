@@ -136,10 +136,51 @@ function AuditDetailModal({ log, onClose }: { log: AuditEntry; onClose: () => vo
           </div>
 
           {/* Details */}
-          <div className="rounded-lg bg-white/5 border border-white/5 px-4 py-3">
-            <div className="text-[10px] text-white/30 mb-2">DETAILS</div>
-            <p className="text-xs text-white/70 leading-relaxed whitespace-pre-wrap">{log.details}</p>
-          </div>
+          {(() => {
+            try {
+              const parsed = JSON.parse(log.details);
+              return (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="rounded-lg bg-white/5 border border-white/5 px-4 py-3">
+                      <div className="text-[10px] text-white/40 mb-1">RISK SCORE & SEVERITY</div>
+                      <div className="text-xs text-white/80">{parsed.score} - {parsed.threatLevel?.toUpperCase()}</div>
+                    </div>
+                    <div className="rounded-lg bg-white/5 border border-white/5 px-4 py-3">
+                      <div className="text-[10px] text-white/40 mb-1">THREAT ENGINES</div>
+                      <div className="text-xs text-white/80">
+                        VT: {parsed.details?.virusTotal?.status?.toUpperCase() || 'N/A'}<br/>
+                        GSB: {parsed.details?.googleSafeBrowsing?.status?.toUpperCase() || 'N/A'}
+                      </div>
+                    </div>
+                    <div className="rounded-lg bg-white/5 border border-white/5 px-4 py-3">
+                      <div className="text-[10px] text-white/40 mb-1">NETWORK INTEL</div>
+                      <div className="text-xs text-white/80 break-all">
+                        IP: {parsed.details?.geoIp?.query || 'Unknown'}<br/>
+                        Country: {parsed.details?.geoIp?.country || 'Unknown'}<br/>
+                        SSL: {parsed.details?.ssl?.valid ? 'Valid' : 'Invalid'}
+                      </div>
+                    </div>
+                    <div className="rounded-lg bg-white/5 border border-white/5 px-4 py-3">
+                      <div className="text-[10px] text-white/40 mb-1">LEXICAL SUMMARY</div>
+                      <div className="text-xs text-white/80">
+                        {parsed.details?.phishing?.indicators?.length > 0 
+                          ? parsed.details.phishing.indicators.map((ind: string, i: number) => <div key={i}>- {ind}</div>)
+                          : "No suspicious indicators"}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            } catch (e) {
+              return (
+                <div className="rounded-lg bg-white/5 border border-white/5 px-4 py-3">
+                  <div className="text-[10px] text-white/30 mb-2">DETAILS</div>
+                  <p className="text-xs text-white/70 leading-relaxed whitespace-pre-wrap">{log.details}</p>
+                </div>
+              );
+            }
+          })()}
         </div>
 
         {/* Footer */}

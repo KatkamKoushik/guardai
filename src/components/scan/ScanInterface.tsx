@@ -121,8 +121,13 @@ export default function ScanInterface() {
       const canvas = await html2canvas(reportEl, {
         scale: 2,
         useCORS: true,
+        allowTaint: true,
         logging: false,
-        backgroundColor: '#0a0a0a'
+        backgroundColor: '#0a0a0a',
+        onclone: (clonedDoc) => {
+          const clonedEl = clonedDoc.getElementById('diagnostic-report');
+          if (clonedEl) clonedEl.style.backgroundColor = '#0a0a0a';
+        }
       });
 
       const imgData = canvas.toDataURL("image/png");
