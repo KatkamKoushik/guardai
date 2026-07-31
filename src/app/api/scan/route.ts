@@ -296,7 +296,7 @@ export async function POST(request: Request) {
     }
 
     // ── 7. Google Safe Browsing v4 (graceful skip) ────────────────────────
-    let gsbStatus: string = "skipped";
+    let gsbStatus: string = "unavailable";
     let gsbSkipped = true;
 
     const gsbApiKey = process.env.GOOGLE_SAFE_BROWSING_API_KEY?.trim();
@@ -333,7 +333,7 @@ export async function POST(request: Request) {
               ? "flagged"
               : "clean";
         } else {
-          gsbStatus = "error";
+          gsbStatus = "unavailable";
         }
       } catch {
         gsbStatus = "unavailable";

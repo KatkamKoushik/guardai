@@ -384,7 +384,7 @@ export async function GET(req: NextRequest) {
           sendEvent({ step: "Threat Intel", status: "flagged", progress: 40, log: "VirusTotal skipped (API key missing)." });
         }
 
-        let gsbStatus = "clean";
+        let gsbStatus = "unavailable";
         let gsbSkipped = false;
         const gsbApiKey = process.env.GOOGLE_SAFE_BROWSING_API_KEY;
 
@@ -394,7 +394,7 @@ export async function GET(req: NextRequest) {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
-                client: { clientId: "guardai", clientVersion: "1.0.0" },
+                client: { clientId: "guardai", clientVersion: "2.0.0" },
                 threatInfo: {
                   threatTypes: ["MALWARE", "SOCIAL_ENGINEERING", "UNWANTED_SOFTWARE", "POTENTIALLY_HARMFUL_APPLICATION"],
                   platformTypes: ["ANY_PLATFORM"],
@@ -411,20 +411,25 @@ export async function GET(req: NextRequest) {
                   gsbStatus = "flagged";
                   sendEvent({ step: "Threat Intel", status: "flagged", progress: 50, log: `[ FLAGGED ] Google Safe Browsing: Blacklisted (Malware/Phishing).` });
                 } else {
+                  gsbStatus = "clean";
                   sendEvent({ step: "Threat Intel", status: "success", progress: 50, log: `Google Safe Browsing: Clean.` });
                 }
               } catch (parseError) {
-                sendEvent({ step: "Threat Intel", status: "flagged", progress: 50, log: "Google Safe Browsing: Failed to parse API response." });
+                gsbStatus = "unavailable";
+                sendEvent({ step: "Threat Intel", status: "success", progress: 50, log: "Google Safe Browsing: Failed to parse API response (graceful fallback)." });
               }
             } else {
-              sendEvent({ step: "Threat Intel", status: "flagged", progress: 50, log: `Google Safe Browsing API error: ${gsbResponse.status}` });
+              gsbStatus = "unavailable";
+              sendEvent({ step: "Threat Intel", status: "success", progress: 50, log: `Google Safe Browsing API error: ${gsbResponse.status} (graceful fallback)` });
             }
           } catch (error: any) {
-            sendEvent({ step: "Threat Intel", status: "flagged", progress: 50, log: `Google Safe Browsing error: ${error.message}` });
+            gsbStatus = "unavailable";
+            sendEvent({ step: "Threat Intel", status: "success", progress: 50, log: `Google Safe Browsing error: ${error.message} (graceful fallback)` });
           }
         } else {
           gsbSkipped = true;
-          sendEvent({ step: "Threat Intel", status: "flagged", progress: 50, log: "Google Safe Browsing skipped (API key missing)." });
+          gsbStatus = "unavailable";
+          sendEvent({ step: "Threat Intel", status: "success", progress: 50, log: "Google Safe Browsing skipped (API key missing)." });
         }
 
         // ==============================================

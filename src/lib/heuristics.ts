@@ -292,7 +292,8 @@ export function analyzeURL(urlStr: string): HeuristicResult {
   }
 
   // ── Signal: Double Slash in Path (open redirect) ──────────────────────
-  if (path.includes("//")) {
+  const pathOnly = url.pathname;
+  if (pathOnly.includes("//")) {
     flags.push("Double slash in path — possible open redirect");
   }
 
