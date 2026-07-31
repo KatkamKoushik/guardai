@@ -57,7 +57,34 @@ export default function ScanInterface() {
     setProgress(0);
     setLogs([]);
     
-    const eventSource = new EventSource(`/api/scan/stream?url=${encodeURIComponent(url)}`);
+    // Input Sanitization: Strip out relative paths, browser origins, and concatenated protocols
+    let sanitizedUrl = url.trim();
+
+    // Remove current app origin if accidentally pasted
+    if (typeof window !== "undefined") {
+      sanitizedUrl = sanitizedUrl.replace(window.location.origin, "");
+    }
+    
+    // Strip trailing /scan if it was accidentally pasted
+    sanitizedUrl = sanitizedUrl.replace(/\/scan\/?$/, "");
+
+    // Find any "http://" or "https://" that isn't at the very beginning
+    const protocolMatch = sanitizedUrl.match(/.+(https?:\/\/)/i);
+    if (protocolMatch) {
+      const idx = sanitizedUrl.lastIndexOf(protocolMatch[1]);
+      if (idx > 0) {
+        sanitizedUrl = sanitizedUrl.substring(0, idx).replace(/\/$/, "");
+      }
+    }
+
+    try {
+      const parsed = new URL(sanitizedUrl.startsWith("http") ? sanitizedUrl : `https://${sanitizedUrl}`);
+      sanitizedUrl = parsed.hostname + (parsed.pathname === "/" ? "" : parsed.pathname) + parsed.search;
+    } catch {
+      // Fallback to raw if URL parsing fails
+    }
+    
+    const eventSource = new EventSource(`/api/scan/stream?url=${encodeURIComponent(sanitizedUrl)}`);
     let lastEventTime = Date.now();
 
     eventSource.onmessage = (event) => {
