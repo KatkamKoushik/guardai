@@ -40,6 +40,21 @@ function isDisallowedTarget(hostname: string) {
   return false;
 }
 
+/**
+ * Refang a defanged URL so analysts can paste IOCs directly.
+ *   hxxp://evil.com  → http://evil.com
+ *   hxxps://evil.com → https://evil.com  (case-insensitive)
+ *   hxxp[://]evil.com, hxxp[s][://]evil.com → handled too
+ */
+function refangUrl(input: string): string {
+  return input
+    .replace(/^hxxps?:(\/\/)?/i, (match) =>
+      match.toLowerCase().startsWith("hxxps") ? "https://" : "http://"
+    )
+    .replace(/^hxxp\[s?\]?\[:?\/\/\]/i, "https://")
+    .replace(/^hxxp\[:?\/\/\]/i,         "http://");
+}
+
 export async function GET(req: NextRequest) {
   const session = await auth();
   const userId = session?.user?.email || "Anonymous";
@@ -62,9 +77,13 @@ export async function GET(req: NextRequest) {
       };
 
       try {
+        // ── Defanged URL sanitization ─────────────────────────────────────────
+        // Must happen before isGibberish() so hxxp:// IOCs aren't rejected.
+        const refangedUrl = refangUrl(targetUrl);
+
         // ── Input Validation Gate ───────────────────────────────────────
         // Reject gibberish / non-domain strings before any network I/O.
-        if (isGibberish(targetUrl)) {
+        if (isGibberish(refangedUrl)) {
           sendEvent({
             step: "Initialization",
             status: "error",
@@ -77,10 +96,10 @@ export async function GET(req: NextRequest) {
 
         let hostname = "";
         try {
-          // Auto-prepend https:// when protocol is absent
-          const normalizedTarget = targetUrl.startsWith("http")
-            ? targetUrl
-            : `https://${targetUrl}`;
+          // Auto-prepend https:// when protocol is absent, using the refanged URL
+          const normalizedTarget = refangedUrl.startsWith("http")
+            ? refangedUrl
+            : `https://${refangedUrl}`;
           const parsed = new URL(normalizedTarget);
           hostname = parsed.hostname;
           if (isDisallowedTarget(hostname)) {

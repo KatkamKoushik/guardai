@@ -352,18 +352,57 @@ export default function ScanInterface() {
                             <span className="text-xs md:text-sm font-semibold">VirusTotal</span>
                           </div>
                           <div className="flex items-center gap-2">
-                            {result.details.virusTotal.skipped || result.details.virusTotal.detections === undefined ? (
-                              <span className="px-2 py-1 text-[10px] font-mono rounded bg-white/10 text-white/50">
-                                SKIPPED
-                              </span>
-                            ) : (
-                              <>
-                                <span className="text-[10px] md:text-xs font-mono">{result.details.virusTotal.detections}/{result.details.virusTotal.total}</span>
-                                <span className={`px-2 py-1 text-[10px] font-mono rounded ${result.details.virusTotal.status === 'clean' ? 'bg-[#00FF66]/20 text-[#00FF66]' : 'bg-[#FF003C]/20 text-[#FF003C]'}`}>
-                                  {result.details.virusTotal.status.toUpperCase()}
-                                </span>
-                              </>
-                            )}
+                            {(() => {
+                              const vt = result.details.virusTotal;
+                              // Skipped: API key not configured
+                              if (vt.skipped) {
+                                return (
+                                  <span className="px-2 py-1 text-[10px] font-mono rounded bg-white/10 text-white/50">
+                                    SKIPPED
+                                  </span>
+                                );
+                              }
+                              // Error / timeout / unavailable: API ran but failed
+                              const isFailed = [
+                                "error", "unavailable", "timeout",
+                              ].includes(vt.status);
+                              // Low engine count: suspiciously few engines (cached/partial result)
+                              const isLowCount =
+                                vt.total === undefined ||
+                                vt.detections === undefined ||
+                                vt.total < 10;
+                              if (isFailed || isLowCount) {
+                                return (
+                                  <span className="px-2 py-1 text-[10px] font-mono rounded bg-[#FFB800]/20 text-[#FFB800]">
+                                    {vt.status === "timeout" ? "TIMEOUT" : "UNAVAILABLE"}
+                                  </span>
+                                );
+                              }
+                              // Flagged: one or more detections
+                              if ((vt.detections ?? 0) > 0) {
+                                return (
+                                  <>
+                                    <span className="text-[10px] md:text-xs font-mono">
+                                      {vt.detections ?? 0}/{vt.total}
+                                    </span>
+                                    <span className="px-2 py-1 text-[10px] font-mono rounded bg-[#FF003C]/20 text-[#FF003C]">
+                                      FLAGGED
+                                    </span>
+                                  </>
+                                );
+                              }
+                              // Genuinely clean: real data, enough engines, zero detections
+                              return (
+                                <>
+                                  <span className="text-[10px] md:text-xs font-mono">
+                                    {vt.detections ?? 0}/{vt.total}
+                                  </span>
+                                  <span className="px-2 py-1 text-[10px] font-mono rounded bg-[#00FF66]/20 text-[#00FF66]">
+                                    CLEAN
+                                  </span>
+                                </>
+                              );
+                            })()}
                           </div>
                         </div>
 
@@ -373,25 +412,45 @@ export default function ScanInterface() {
                             <span className="text-xs md:text-sm font-semibold">Google Safe Browsing</span>
                           </div>
                           <div className="flex items-center gap-2">
-                            {result.details.googleSafeBrowsing.skipped ? (
-                              <span className="px-2 py-1 text-[10px] font-mono rounded bg-white/10 text-white/50">
-                                SKIPPED
-                              </span>
-                            ) : result.details.googleSafeBrowsing.status === 'clean' ? (
-                              <span className="px-2 py-1 text-[10px] font-mono rounded bg-[#00FF66]/20 text-[#00FF66] flex items-center gap-1">
-                                <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                </svg>
-                                CLEAN
-                              </span>
-                            ) : (
-                              <span className="px-2 py-1 text-[10px] font-mono rounded bg-[#FF003C]/20 text-[#FF003C] flex items-center gap-1">
-                                <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                                </svg>
-                                BLACKLISTED
-                              </span>
-                            )}
+                            {(() => {
+                              const gsb = result.details.googleSafeBrowsing;
+                              // Skipped: API key not configured
+                              if (gsb.skipped) {
+                                return (
+                                  <span className="px-2 py-1 text-[10px] font-mono rounded bg-white/10 text-white/50">
+                                    SKIPPED
+                                  </span>
+                                );
+                              }
+                              // Error / timeout / unavailable
+                              if (["error", "unavailable", "timeout"].includes(gsb.status)) {
+                                return (
+                                  <span className="px-2 py-1 text-[10px] font-mono rounded bg-[#FFB800]/20 text-[#FFB800]">
+                                    {gsb.status === "timeout" ? "TIMEOUT" : "UNAVAILABLE"}
+                                  </span>
+                                );
+                              }
+                              // Blacklisted
+                              if (gsb.status === "flagged") {
+                                return (
+                                  <span className="px-2 py-1 text-[10px] font-mono rounded bg-[#FF003C]/20 text-[#FF003C] flex items-center gap-1">
+                                    <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                                    </svg>
+                                    BLACKLISTED
+                                  </span>
+                                );
+                              }
+                              // Genuinely clean
+                              return (
+                                <span className="px-2 py-1 text-[10px] font-mono rounded bg-[#00FF66]/20 text-[#00FF66] flex items-center gap-1">
+                                  <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                  </svg>
+                                  CLEAN
+                                </span>
+                              );
+                            })()}
                           </div>
                         </div>
                       </div>

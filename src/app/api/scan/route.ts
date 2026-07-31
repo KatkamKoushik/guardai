@@ -3,12 +3,13 @@
  *
  * Lightweight synchronous endpoint used by non-streaming callers.
  * Primary features:
- *   1. Strict input validation — rejects gibberish before any external call.
- *   2. Auto-protocol prepend — bare domains get https:// prepended.
- *   3. Private/local target block — SSRF protection.
- *   4. Real VirusTotal v3 integration (graceful skip if key absent / call fails).
- *   5. Real Google Safe Browsing v4 integration (graceful skip).
- *   6. GuardAI Lexical Heuristics Engine — always runs, no external dependency.
+ *   1. Defanged URL sanitization — hxxp/hxxps → http/https.
+ *   2. Strict input validation — rejects gibberish before any external call.
+ *   3. Auto-protocol prepend — bare domains get https:// prepended.
+ *   4. Private/local target block — SSRF protection.
+ *   5. Real VirusTotal v3 integration (graceful skip if key absent / call fails).
+ *   6. Real Google Safe Browsing v4 integration (graceful skip).
+ *   7. GuardAI Lexical Heuristics Engine — always runs, no external dependency.
  */
 
 import { NextResponse } from "next/server";
@@ -18,6 +19,25 @@ import { analyzeURL, isGibberish } from "@/lib/heuristics";
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/**
+ * Refang a defanged URL.
+ * Analysts often share IOCs with "hxxp" to prevent accidental clicks.
+ * This step must run BEFORE any validation so the downstream logic
+ * always operates on a real protocol string.
+ *   hxxp://example.com  → http://example.com
+ *   hxxps://example.com → https://example.com
+ *   HXXPS://example.com → https://example.com  (case-insensitive)
+ */
+function refangUrl(input: string): string {
+  return input
+    .replace(/^hxxps?:(\/\/)?/i, (match) =>
+      match.toLowerCase().startsWith("hxxps") ? "https://" : "http://"
+    )
+    // Also handle bracket-style defanging: hxxp[://] or hxxp[s]://
+    .replace(/^hxxp\[s?\]?\[:?\/\/\]/i, "https://")
+    .replace(/^hxxp\[:?\/\/\]/i,         "http://");
+}
 
 /** Prepend https:// when the user omits the protocol (e.g. "google.com"). */
 function normalizeUrl(input: string): string {
@@ -76,8 +96,12 @@ export async function POST(request: Request) {
       );
     }
 
+    // ── 1b. Defanged URL sanitization ─────────────────────────────────────
+    // Must run BEFORE isGibberish() so defanged IOCs are accepted.
+    const sanitizedInput = refangUrl(rawInput);
+
     // ── 2. Gibberish / invalid input guard ────────────────────────────────
-    if (isGibberish(rawInput)) {
+    if (isGibberish(sanitizedInput)) {
       return NextResponse.json(
         {
           error:
@@ -88,7 +112,7 @@ export async function POST(request: Request) {
     }
 
     // ── 3. Normalize & parse URL ──────────────────────────────────────────
-    const targetUrl = normalizeUrl(rawInput);
+    const targetUrl = normalizeUrl(sanitizedInput);
     let parsed: URL;
     try {
       parsed = new URL(targetUrl);
