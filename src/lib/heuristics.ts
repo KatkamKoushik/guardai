@@ -234,10 +234,19 @@ export function analyzeURL(urlStr: string): HeuristicResult {
   }
 
   // ── Signal: Suspicious Keywords in Domain ─────────────────────────────
+  // Identify if the domain is legitimately owned by one of our tracked brands
+  const matchedLegitBrand = BRAND_NAMES.find(brand => 
+    hostname === `${brand}.com` || hostname.endsWith(`.${brand}.com`)
+  );
+
   let suspiciousWordsCount = 0;
   const matchedKeywords: string[] = [];
   for (const kw of SUSPICIOUS_KEYWORDS) {
     if (hostname.includes(kw)) {
+      // Prevent brand keyword false positives on legitimate root domains
+      if (matchedLegitBrand === kw) {
+        continue;
+      }
       suspiciousWordsCount++;
       matchedKeywords.push(kw);
     }

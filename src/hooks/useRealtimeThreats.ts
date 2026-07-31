@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 
 export interface ThreatTelemetry {
   id: string;
@@ -26,93 +26,65 @@ export function useRealtimeThreats(): RealtimeThreatsState {
   const [systemStatus, setSystemStatus] = useState<RealtimeThreatsState["systemStatus"]>("Disconnected");
   const [connectionLatency, setConnectionLatency] = useState(0);
 
-  const eventSourceRef = useRef<EventSource | null>(null);
-  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const lastMessageTimeRef = useRef<number>(Date.now());
-  const fallbackPollRef = useRef<NodeJS.Timeout | null>(null);
-
   useEffect(() => {
-    function fetchInitial() {
-      fetch("/api/telemetry")
-        .then(res => res.json())
-        .then(data => {
-          if (data.items && data.items.length > 0) {
-            setLatestThreats(data.items);
-            if (fallbackPollRef.current) clearInterval(fallbackPollRef.current);
-          } else {
-            if (!fallbackPollRef.current) {
-              fallbackPollRef.current = setInterval(fetchInitial, 5000);
-            }
-          }
-        })
-        .catch(err => console.error("Failed to fetch initial telemetry", err));
-    }
-    
-    fetchInitial();
+    let lastPollTime = Date.now();
+    let isMounted = true;
 
-    function connect() {
-      if (eventSourceRef.current) {
-        eventSourceRef.current.close();
-      }
-
-      setSystemStatus("Reconnecting");
+    async function pollTelemetry() {
+      if (!isMounted) return;
       
-      const sse = new EventSource("/api/telemetry/stream");
-      eventSourceRef.current = sse;
-
-      sse.onopen = () => {
-        setSystemStatus("Connected");
-        lastMessageTimeRef.current = Date.now();
-      };
-
-      sse.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          
-          // Calculate latency: time since last message (expect ~2000ms from server)
-          // To get true ping we'd need roundtrip, but for SSE we just measure consistency
-          const now = Date.now();
-          setConnectionLatency(now - lastMessageTimeRef.current);
-          lastMessageTimeRef.current = now;
-
-          if (data.newThreat) {
-            setLatestThreats(prev => [data.newThreat, ...prev].slice(0, 50));
-          }
-          if (typeof data.threatCount === 'number') {
-            setThreatCount(data.threatCount);
-          }
-          if (typeof data.scanCount === 'number') {
-            setScanCount(data.scanCount);
-          }
-        } catch (error) {
-          console.error("Failed to parse SSE data", error);
-        }
-      };
-
-      sse.onerror = () => {
-        setSystemStatus("Disconnected");
-        sse.close();
+      const startTime = Date.now();
+      try {
+        setSystemStatus("Reconnecting");
+        const res = await fetch("/api/telemetry", {
+          cache: "no-store", // Ensure we bypass Next.js cache
+        });
         
-        // Exponential backoff or simple fixed reconnect
-        if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
-        reconnectTimeoutRef.current = setTimeout(() => {
-          connect();
-        }, 3000); // Reconnect after 3s
-      };
+        if (!res.ok) throw new Error("Failed to fetch telemetry");
+        
+        const data = await res.json();
+        
+        const latency = Date.now() - startTime;
+        setConnectionLatency(latency);
+        setSystemStatus("Connected");
+
+        if (data.recentScans) {
+          // Map backend's 'threatLevel' to frontend's 'threatType'
+          const mappedThreats: ThreatTelemetry[] = data.recentScans.map((scan: any) => ({
+            id: scan.id,
+            ipAddress: scan.ipAddress,
+            domain: scan.domain,
+            threatType: scan.threatLevel || "Unknown",
+            countryCode: scan.countryCode,
+            latitude: scan.latitude,
+            longitude: scan.longitude,
+            timestamp: scan.timestamp,
+          }));
+          setLatestThreats(mappedThreats);
+        }
+        
+        if (typeof data.totalThreats === 'number') {
+          setThreatCount(data.totalThreats);
+        }
+        
+        if (typeof data.totalScans === 'number') {
+          setScanCount(data.totalScans);
+        }
+      } catch (err) {
+        console.error("Telemetry Poll Error:", err);
+        setSystemStatus("Disconnected");
+      }
     }
 
-    connect();
+    // Initial fetch
+    pollTelemetry();
+
+    // Poll every 2 seconds
+    const interval = setInterval(pollTelemetry, 2000);
 
     return () => {
-      if (eventSourceRef.current) {
-        eventSourceRef.current.close();
-      }
-      if (reconnectTimeoutRef.current) {
-        clearTimeout(reconnectTimeoutRef.current);
-      }
-      if (fallbackPollRef.current) {
-        clearInterval(fallbackPollRef.current);
-      }
+      isMounted = false;
+      clearInterval(interval);
     };
   }, []);
 
