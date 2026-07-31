@@ -151,7 +151,7 @@ export default function ScanInterface() {
   const threatColor = result ? getThreatColor(result.threatLevel) : "#00F0FF";
 
   return (
-    <section className="relative min-h-screen flex flex-col items-center justify-center px-4 py-24 z-10">
+    <section className="relative min-h-screen flex flex-col items-center pt-20 sm:pt-24 pb-12 z-10">
       <div className="w-full max-w-5xl">
         <div className="text-center mb-12">
           <h2

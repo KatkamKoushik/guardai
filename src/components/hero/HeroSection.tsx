@@ -61,7 +61,7 @@ export default function HeroSection() {
   }, []);
 
   return (
-    <section className="relative min-h-screen flex flex-col items-center justify-center px-4 z-10">
+    <section className="relative min-h-0 py-12 md:py-20 lg:py-24 flex flex-col items-center justify-center px-4 z-10">
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}

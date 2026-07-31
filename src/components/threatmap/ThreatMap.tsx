@@ -63,7 +63,7 @@ export default function ThreatMap() {
   const pingsPerSec = Math.max(0, Math.round(1000 / Math.max(connectionLatency, 1)));
 
   return (
-    <section className="relative min-h-screen px-4 py-24 z-10">
+    <section className="relative min-h-screen px-4 pt-20 sm:pt-24 pb-12 z-10">
       <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         
         {/* Header */}
@@ -87,41 +87,40 @@ export default function ThreatMap() {
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
           {/* Main 3D View */}
           <div className="lg:col-span-3 relative">
-            <GlassCard className="w-full h-[280px] sm:h-[400px] md:h-[500px] relative overflow-hidden" hover3D={false}>
-              
-              {/* HUD Overlay Filters */}
-              <div className="flex flex-wrap items-center gap-2 mb-4 z-10 relative pt-4 pl-4">
-                {["All", "Malware", "Phishing", "Botnet"].map((f) => (
-                  <button
-                    type="button"
-                    key={f}
-                    onClick={() => setFilter(f as any)}
-                    className={`px-3 py-1.5 rounded-md text-xs border transition-colors ${
-                      filter === f 
-                        ? "bg-[#00F0FF]/20 border-[#00F0FF]/50 text-[#00F0FF]" 
-                        : "bg-black/40 border-white/10 text-white/50 hover:bg-white/5"
-                    }`}
-                    style={{ fontFamily: "var(--font-mono)" }}
-                  >
-                    {f}
-                  </button>
-                ))}
-              </div>
-
-              <div className="absolute top-4 right-4 z-10">
+            
+            {/* HUD Overlay Filters */}
+            <div className="flex flex-wrap items-center gap-2 overflow-x-auto pb-2 scrollbar-none relative z-10 mb-4">
+              {["All", "Malware", "Phishing", "Botnet"].map((f) => (
                 <button
                   type="button"
-                  onClick={handlePauseToggle}
-                  className={`px-3 py-1.5 rounded-md text-xs border transition-colors flex items-center gap-2 ${
-                    isPaused 
-                      ? "bg-red-500/20 border-red-500/50 text-red-500" 
-                      : "bg-[#00F0FF]/10 border-[#00F0FF]/30 text-[#00F0FF]"
+                  key={f}
+                  onClick={() => setFilter(f as any)}
+                  className={`px-3 py-1.5 rounded-md text-xs border transition-colors whitespace-nowrap ${
+                    filter === f 
+                      ? "bg-[#00F0FF]/20 border-[#00F0FF]/50 text-[#00F0FF]" 
+                      : "bg-black/40 border-white/10 text-white/50 hover:bg-white/5"
                   }`}
                   style={{ fontFamily: "var(--font-mono)" }}
                 >
-                  {isPaused ? "▶ RESUME" : "⏸ PAUSE"}
+                  {f}
                 </button>
-              </div>
+              ))}
+              <div className="hidden sm:block w-px h-6 bg-white/10 mx-1"></div>
+              <button
+                type="button"
+                onClick={handlePauseToggle}
+                className={`px-3 py-1.5 rounded-md text-xs border transition-colors flex items-center gap-2 whitespace-nowrap ${
+                  isPaused 
+                    ? "bg-red-500/20 border-red-500/50 text-red-500" 
+                    : "bg-[#00F0FF]/10 border-[#00F0FF]/30 text-[#00F0FF]"
+                }`}
+                style={{ fontFamily: "var(--font-mono)" }}
+              >
+                {isPaused ? "▶ RESUME" : "⏸ PAUSE"}
+              </button>
+            </div>
+
+            <GlassCard className="w-full h-[280px] sm:h-[400px] md:h-[500px] relative overflow-hidden" hover3D={false}>
 
               <div className="absolute bottom-4 left-4 z-10 p-3 rounded-lg bg-black/60 backdrop-blur-md border border-white/5">
                 <div className="text-[10px] text-white/40 mb-1" style={{ fontFamily: "var(--font-mono)" }}>LIVE PINGS / SEC</div>

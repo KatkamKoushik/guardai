@@ -98,10 +98,10 @@ export default function Home() {
   }, []);
 
   return (
-    <div className="relative">
+    <div className="relative space-y-12 sm:space-y-16 lg:space-y-24">
       <HeroSection />
 
-      <section ref={featuresRef} className="relative z-10 px-4 py-32">
+      <section ref={featuresRef} className="relative z-10 px-4">
         <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <motion.div
             initial={{ opacity: 0, y: 30 }}
@@ -151,7 +151,7 @@ export default function Home() {
         </div>
       </section>
 
-      <section className="relative z-10 px-4 py-32">
+      <section className="relative z-10 px-4">
         <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <motion.div
             initial={{ opacity: 0, y: 30 }}
