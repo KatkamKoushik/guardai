@@ -140,24 +140,27 @@ body {
 }
 
 @media print {
-  nav, header, footer, button { display: none !important; }
-  @page {
-    size: A4 portrait;
-    margin: 10mm;
+  /* Hide every element on the page by default */
+  body * {
+    visibility: hidden;
   }
-  body {
-    background-color: #0a0a0a !important;
+  
+  /* Make only the report and its children visible */
+  #diagnostic-report, #diagnostic-report * {
+    visibility: visible;
+  }
+  
+  /* Pull the report to the absolute top-left of the paper */
+  #diagnostic-report {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100vw !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background-color: #0a0a0a !important; /* Force dark background */
     color: #ffffff !important;
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
-  }
-  .no-print {
-    display: none !important;
-  }
-  #diagnostic-report {
-    width: 100% !important;
-    max-width: 100% !important;
-    margin: 0 !important;
-    box-shadow: none !important;
   }
 }

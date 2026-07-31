@@ -102,7 +102,7 @@ export default function Home() {
   const [totalScans, setTotalScans] = useState<number | null>(null);
 
   useEffect(() => {
-    fetch('/api/stats')
+    fetch('/api/stats', { cache: 'no-store' })
       .then(res => res.json())
       .then(data => {
         if (typeof data.totalScans === 'number') {
