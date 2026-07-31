@@ -190,71 +190,97 @@ export function analyzeURL(urlStr: string): HeuristicResult {
   if (length > 100) flags.push("Excessive URL length (>100 chars)");
   else if (length > 75) flags.push("Long URL (>75 chars)");
 
-  // ── Signal: Shannon Entropy ────────────────────────────────────────────
-  const entropy = calculateEntropy(hostname);
-  if (entropy > 4.5) flags.push(`Very high domain entropy (${entropy.toFixed(2)}) — likely auto-generated`);
-  else if (entropy > 4.0) flags.push(`Elevated domain entropy (${entropy.toFixed(2)}) — potential obfuscation`);
-
   // ── Signal: Raw IP Address as Hostname ────────────────────────────────
   const ipv4Re = /^(?:\d{1,3}\.){3}\d{1,3}$/;
-  const hasIP  = ipv4Re.test(hostname) || hostname === "[::1]";
+  const ipv6Re = /^\[?[0-9a-fA-F:]+\]?$/;
+  const hasIP  = ipv4Re.test(hostname) || ipv6Re.test(hostname);
   if (hasIP) flags.push("IP address used as hostname (no domain name)");
 
-  // ── Signal: Subdomains ────────────────────────────────────────────────
-  const parts = hostname.split(".");
-  const subdomainCount = Math.max(0, parts.length - 2);
-  if (subdomainCount > 3) flags.push(`Excessive subdomain depth (${subdomainCount} levels)`);
-  else if (subdomainCount > 2) flags.push(`Multiple subdomains detected (${subdomainCount} levels)`);
+  let entropy = 0;
+  let subdomainCount = 0;
+  let hyphenCount = 0;
+  let suspiciousWordsCount = 0;
+  let isPunycode = false;
+  let isNumberSubstituted = false;
+  let isSuspiciousTLD = false;
+  let isHexEncoded = false;
 
-  // ── Signal: Hyphen Count ──────────────────────────────────────────────
-  const hyphenCount = (hostname.match(/-/g) ?? []).length;
-  if (hyphenCount > 4) flags.push(`Excessive hyphens in domain (${hyphenCount}) — common in phishing`);
-  else if (hyphenCount > 2) flags.push(`Multiple hyphens in domain (${hyphenCount})`);
+  if (!hasIP) {
+    // ── Signal: Shannon Entropy ────────────────────────────────────────────
+    entropy = calculateEntropy(hostname);
+    if (entropy > 4.5) flags.push(`Very high domain entropy (${entropy.toFixed(2)}) — likely auto-generated`);
+    else if (entropy > 4.0) flags.push(`Elevated domain entropy (${entropy.toFixed(2)}) — potential obfuscation`);
 
-  // ── Signal: Punycode / IDN Homograph Attack ───────────────────────────
-  if (PUNYCODE_RE.test(hostname)) {
-    flags.push("Punycode/IDN encoding detected — possible homograph attack");
-  }
+    // ── Signal: Subdomains ────────────────────────────────────────────────
+    const parts = hostname.split(".");
+    subdomainCount = Math.max(0, parts.length - 2);
+    if (subdomainCount > 3) flags.push(`Excessive subdomain depth (${subdomainCount} levels)`);
+    else if (subdomainCount > 2) flags.push(`Multiple subdomains detected (${subdomainCount} levels)`);
 
-  // ── Signal: Number Substitution (g00gle, paypa1) ──────────────────────
-  const domainBody = parts.slice(0, -1).join(".");  // strip TLD
-  if (NUMBER_SUBSTITUTION_RE.test(domainBody)) {
-    flags.push("Digits in domain name — possible leet-speak brand impersonation");
-  }
+    // ── Signal: Hyphen Count ──────────────────────────────────────────────
+    hyphenCount = (hostname.match(/-/g) ?? []).length;
+    if (hyphenCount > 4) flags.push(`Excessive hyphens in domain (${hyphenCount}) — common in phishing`);
+    else if (hyphenCount > 2) flags.push(`Multiple hyphens in domain (${hyphenCount})`);
 
-  // ── Signal: Suspicious TLD ────────────────────────────────────────────
-  const tld = parts[parts.length - 1];
-  if (SUSPICIOUS_TLDS.has(tld)) {
-    flags.push(`Suspicious TLD ".${tld}" — high abuse frequency`);
+    // ── Signal: Punycode / IDN Homograph Attack ───────────────────────────
+    if (PUNYCODE_RE.test(hostname)) {
+      isPunycode = true;
+      flags.push("Punycode/IDN encoding detected — possible homograph attack");
+    }
+
+    // ── Signal: Number Substitution (g00gle, paypa1) ──────────────────────
+    const domainBody = parts.slice(0, -1).join(".");  // strip TLD
+    if (NUMBER_SUBSTITUTION_RE.test(domainBody)) {
+      isNumberSubstituted = true;
+      flags.push("Digits in domain name — possible leet-speak brand impersonation");
+    }
+
+    // ── Signal: Suspicious TLD ────────────────────────────────────────────
+    const tld = parts[parts.length - 1];
+    if (SUSPICIOUS_TLDS.has(tld)) {
+      isSuspiciousTLD = true;
+      flags.push(`Suspicious TLD ".${tld}" — high abuse frequency`);
+    }
+
+    // ── Signal: Suspicious Keywords in Domain ─────────────────────────────
+    const matchedLegitBrand = BRAND_NAMES.find(brand => 
+      hostname === `${brand}.com` || hostname.endsWith(`.${brand}.com`)
+    );
+
+    const matchedKeywords: string[] = [];
+    for (const kw of SUSPICIOUS_KEYWORDS) {
+      if (hostname.includes(kw)) {
+        if (matchedLegitBrand === kw) {
+          continue;
+        }
+        suspiciousWordsCount++;
+        matchedKeywords.push(kw);
+      }
+    }
+    if (suspiciousWordsCount > 0) {
+      flags.push(
+        `Contains ${suspiciousWordsCount} phishing keyword${suspiciousWordsCount > 1 ? "s" : ""} in domain: ${matchedKeywords.slice(0, 5).join(", ")}`
+      );
+    }
+
+    // ── Signal: Brand Typosquatting ───────────────────────────────────────
+    for (const brand of BRAND_NAMES) {
+      if (hostname.includes(brand) && !hostname.endsWith(`.${brand}.com`) && hostname !== `${brand}.com`) {
+        flags.push(`Domain impersonates brand "${brand}" (typosquatting)`);
+        break;
+      }
+    }
+
+    // ── Signal: Hexadecimal / Percent-Encoded Hostname ────────────────────
+    if (/%[0-9a-f]{2}/i.test(hostname)) {
+      isHexEncoded = true;
+      flags.push("Percent-encoded characters in hostname — potential obfuscation");
+    }
   }
 
   // ── Signal: @ Symbol (credential masking) ─────────────────────────────
   if (fullUrl.includes("@")) {
     flags.push('Contains "@" — potential credential masking (user@host trick)');
-  }
-
-  // ── Signal: Suspicious Keywords in Domain ─────────────────────────────
-  // Identify if the domain is legitimately owned by one of our tracked brands
-  const matchedLegitBrand = BRAND_NAMES.find(brand => 
-    hostname === `${brand}.com` || hostname.endsWith(`.${brand}.com`)
-  );
-
-  let suspiciousWordsCount = 0;
-  const matchedKeywords: string[] = [];
-  for (const kw of SUSPICIOUS_KEYWORDS) {
-    if (hostname.includes(kw)) {
-      // Prevent brand keyword false positives on legitimate root domains
-      if (matchedLegitBrand === kw) {
-        continue;
-      }
-      suspiciousWordsCount++;
-      matchedKeywords.push(kw);
-    }
-  }
-  if (suspiciousWordsCount > 0) {
-    flags.push(
-      `Contains ${suspiciousWordsCount} phishing keyword${suspiciousWordsCount > 1 ? "s" : ""} in domain: ${matchedKeywords.slice(0, 5).join(", ")}`
-    );
   }
 
   // ── Signal: Suspicious Path Tokens ────────────────────────────────────
@@ -276,15 +302,6 @@ export function analyzeURL(urlStr: string): HeuristicResult {
     flags.push(`Suspicious path keywords detected: ${pathMatchedKeywords.join(", ")}`);
   }
 
-  // ── Signal: Brand Typosquatting ───────────────────────────────────────
-  for (const brand of BRAND_NAMES) {
-    // The brand string appears in the domain but is NOT the registered domain
-    if (hostname.includes(brand) && !hostname.endsWith(`.${brand}.com`) && hostname !== `${brand}.com`) {
-      flags.push(`Domain impersonates brand "${brand}" (typosquatting)`);
-      break;
-    }
-  }
-
   // ── Signal: Special Character Ratio ──────────────────────────────────
   const specialMatches = fullUrl.match(/[-@?=_%&#!~]/g) ?? [];
   const specialCharRatio = specialMatches.length / length;
@@ -294,11 +311,6 @@ export function analyzeURL(urlStr: string): HeuristicResult {
   // ── Signal: Excessive Path Depth ─────────────────────────────────────
   const pathDepth = path.split("/").filter(Boolean).length;
   if (pathDepth > 5) flags.push(`Deep URL path (${pathDepth} segments) — common in obfuscated redirects`);
-
-  // ── Signal: Hexadecimal / Percent-Encoded Hostname ────────────────────
-  if (/%[0-9a-f]{2}/i.test(hostname)) {
-    flags.push("Percent-encoded characters in hostname — potential obfuscation");
-  }
 
   // ── Signal: Double Slash in Path (open redirect) ──────────────────────
   const pathOnly = url.pathname;
@@ -325,8 +337,8 @@ export function analyzeURL(urlStr: string): HeuristicResult {
   // Hard signals
   if (hasIP)                         score += 40;
   if (fullUrl.includes("@"))         score += 30;
-  if (PUNYCODE_RE.test(hostname))    score += 25;
-  if (SUSPICIOUS_TLDS.has(tld))      score += 20;
+  if (isPunycode)                    score += 25;
+  if (isSuspiciousTLD)               score += 20;
   if (malwareExts.test(path))        score += 35;
 
   // Entropy signals
@@ -344,20 +356,22 @@ export function analyzeURL(urlStr: string): HeuristicResult {
   if (hyphenCount > 4)               score += 15;
   else if (hyphenCount > 2)          score += 7;
 
-  if (NUMBER_SUBSTITUTION_RE.test(domainBody)) score += 10;
+  if (isNumberSubstituted)           score += 10;
   if (pathDepth > 5)                 score += 8;
   if (path.includes("//"))           score += 10;
-  if (/%[0-9a-f]{2}/i.test(hostname)) score += 15;
+  if (isHexEncoded)                  score += 15;
 
   // Keyword / brand signals
   score += Math.min(suspiciousWordsCount * 12, 40);
   if (pathSuspiciousCount > 0) score += Math.min(pathSuspiciousCount * 15, 30);
 
-  // Brand typosquat — recheck inline (avoids double loop)
-  for (const brand of BRAND_NAMES) {
-    if (hostname.includes(brand) && !hostname.endsWith(`.${brand}.com`) && hostname !== `${brand}.com`) {
-      score += 30;
-      break;
+  if (!hasIP) {
+    // Brand typosquat — recheck inline (avoids double loop)
+    for (const brand of BRAND_NAMES) {
+      if (hostname.includes(brand) && !hostname.endsWith(`.${brand}.com`) && hostname !== `${brand}.com`) {
+        score += 30;
+        break;
+      }
     }
   }
 
