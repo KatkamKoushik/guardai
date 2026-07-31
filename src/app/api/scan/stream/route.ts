@@ -523,7 +523,48 @@ export async function GET(req: NextRequest) {
           userId
         );
 
-        // ── Live Notification Dispatch (Bug #3) ──────────────────────────
+        // ── Persist Scan record (global counter) ─────────────────────────
+        // ROOT CAUSE FIX: The stream route previously only wrote to auditLog
+        // and threatTelemetry. /api/telemetry queries prisma.scan.count() —
+        // adding this write ensures every deep scan increments the global
+        // homepage counter and appears in the live feed for ALL users.
+        await (async () => {
+          try {
+            const { prisma } = await import("@/lib/db");
+
+            // Resolve userId — the session was already loaded above for notifications.
+            // We attempt it again here in a self-contained try/catch so a session
+            // failure doesn't abort the scan write.
+            let resolvedUserId: string | null = null;
+            try {
+              const sessionModule = await import("@/lib/auth");
+              const scanSession = await sessionModule.auth();
+              if (scanSession?.user?.email) {
+                const userRecord = await prisma.user.findUnique({
+                  where: { email: scanSession.user.email },
+                  select: { id: true },
+                });
+                resolvedUserId = userRecord?.id ?? null;
+              }
+            } catch {
+              // Anonymous / unauthenticated — userId stays null (allowed by schema)
+            }
+
+            await prisma.scan.create({
+              data: {
+                url: targetUrl,
+                threatLevel,
+                score: finalScore,
+                details: resultData.details,
+                userId: resolvedUserId,
+              },
+            });
+          } catch (scanWriteErr) {
+            console.error("[stream/route] Failed to persist Scan record:", scanWriteErr);
+          }
+        })();
+
+
         // Awaited to prevent Vercel terminating lambda before sending webhook.
         await (async () => {
           try {

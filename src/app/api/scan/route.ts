@@ -418,6 +418,63 @@ export async function POST(request: Request) {
       }
     })();
 
+    // ── 9b. Persist Scan record (global counter) ───────────────────────────
+    // ROOT CAUSE FIX: The previous version only wrote to threatTelemetry
+    // (conditionally, score > 50). /api/telemetry counts prisma.scan — which
+    // was always empty. Now EVERY completed scan persists a Scan row so the
+    // homepage counter accurately reflects global activity across all users.
+    await (async () => {
+      try {
+        const { prisma } = await import("@/lib/db");
+
+        // Attempt to resolve the current user; null is fine (schema allows it).
+        let userId: string | null = null;
+        try {
+          const { auth } = await import("@/lib/auth");
+          const session = await auth();
+          if (session?.user?.email) {
+            const user = await prisma.user.findUnique({
+              where: { email: session.user.email },
+              select: { id: true },
+            });
+            userId = user?.id ?? null;
+          }
+        } catch {
+          // Anonymous / unauthenticated scan — userId stays null
+        }
+
+        await prisma.scan.create({
+          data: {
+            url: targetUrl,
+            threatLevel,
+            score,
+            details: {
+              virusTotal: {
+                status: vtStatus,
+                detections: vtDetections,
+                total: Math.max(vtTotal, 1),
+                skipped: vtSkipped,
+              },
+              googleSafeBrowsing: { status: gsbStatus, skipped: gsbSkipped },
+              phishing: {
+                probability: heuristicData.probability,
+                indicators: heuristicData.flags,
+              },
+              ssl: {
+                valid: sslResult.valid,
+                issuer: sslResult.issuer,
+                expiry: sslResult.expiry,
+              },
+            },
+            userId,
+          },
+        });
+      } catch (scanWriteErr) {
+        // Non-fatal — the response has already been prepared; log and continue.
+        console.error("[scan/route] Failed to persist Scan record:", scanWriteErr);
+      }
+    })();
+
     // ── 10. Build & Return Response ───────────────────────────────────────
     return NextResponse.json({
       url: targetUrl,

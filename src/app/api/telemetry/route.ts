@@ -68,13 +68,21 @@ export async function GET() {
       };
     });
 
-    return NextResponse.json({
-      totalScans,
-      totalThreats,
-      recentScans,
-      // Clients can use this flag to show "Waiting for live scans…"
-      waitingForData: recentScans.length === 0,
-    });
+    const headers = {
+      "Cache-Control": "no-store, max-age=0",
+      "Pragma": "no-cache",
+    };
+
+    return NextResponse.json(
+      {
+        totalScans,
+        totalThreats,
+        recentScans,
+        // Clients can use this flag to show "Waiting for live scans…"
+        waitingForData: recentScans.length === 0,
+      },
+      { headers }
+    );
   } catch (error) {
     console.error("[telemetry] Failed to fetch live data:", error);
     return NextResponse.json(

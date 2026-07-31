@@ -130,7 +130,14 @@ export default function LiveTelemetry({
 
   const poll = useCallback(async () => {
     try {
-      const res = await fetch("/api/telemetry", { cache: "no-store" });
+      const res = await fetch("/api/telemetry", {
+        cache: "no-store",
+        credentials: "omit",
+        headers: {
+          "Pragma": "no-cache",
+          "Cache-Control": "no-cache",
+        },
+      });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json: TelemetryResponse = await res.json();
       setData(json);
