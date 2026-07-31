@@ -104,10 +104,24 @@ export async function GET(req: NextRequest) {
           hostname = parsed.hostname;
           if (isDisallowedTarget(hostname)) {
             sendEvent({
-              step: "Initialization",
-              status: "error",
-              progress: 10,
-              log: "Target is not allowed for security reasons.",
+              step: "Complete",
+              status: "success",
+              progress: 100,
+              log: "Target is a private/internal network IP address (RFC 1918) and cannot be reached over the public internet.",
+              result: {
+                url: targetUrl,
+                threatLevel: "safe",
+                score: 0,
+                status: "LOCAL_IP_DETECTED",
+                message: "Target is a private/internal network IP address (RFC 1918) and cannot be reached over the public internet.",
+                details: {
+                  virusTotal: { status: "skipped", detections: 0, total: 1, skipped: true },
+                  googleSafeBrowsing: { status: "skipped", skipped: true },
+                  phishing: { probability: 0, indicators: [] },
+                  ssl: { valid: false, issuer: "Unknown", expiry: "Unknown" },
+                  reputation: { score: 100, category: "LOCAL_IP" }
+                }
+              }
             });
             controller.close();
             return;

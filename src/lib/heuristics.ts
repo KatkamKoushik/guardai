@@ -46,6 +46,13 @@ export function isGibberish(input: string): boolean {
     .split("?")[0]   // drop query
     .split("#")[0];  // drop fragment
 
+  // Check if it's a valid IPv4 or IPv6 (including brackets for IPv6)
+  const ipv4Re = /^(?:\d{1,3}\.){3}\d{1,3}(:\d+)?$/;
+  const ipv6Re = /^\[?[0-9a-fA-F:]+\]?(:\d+)?$/;
+  if (ipv4Re.test(stripped) || (stripped.includes(":") && ipv6Re.test(stripped))) {
+    return false; // Valid IP address is not gibberish
+  }
+
   // Must contain at least one dot (otherwise it's not a FQDN)
   if (!stripped.includes(".")) return true;
 
@@ -226,19 +233,38 @@ export function analyzeURL(urlStr: string): HeuristicResult {
     flags.push('Contains "@" — potential credential masking (user@host trick)');
   }
 
-  // ── Signal: Suspicious Keywords ───────────────────────────────────────
+  // ── Signal: Suspicious Keywords in Domain ─────────────────────────────
   let suspiciousWordsCount = 0;
   const matchedKeywords: string[] = [];
   for (const kw of SUSPICIOUS_KEYWORDS) {
-    if (fullUrl.includes(kw)) {
+    if (hostname.includes(kw)) {
       suspiciousWordsCount++;
       matchedKeywords.push(kw);
     }
   }
   if (suspiciousWordsCount > 0) {
     flags.push(
-      `Contains ${suspiciousWordsCount} phishing keyword${suspiciousWordsCount > 1 ? "s" : ""}: ${matchedKeywords.slice(0, 5).join(", ")}`
+      `Contains ${suspiciousWordsCount} phishing keyword${suspiciousWordsCount > 1 ? "s" : ""} in domain: ${matchedKeywords.slice(0, 5).join(", ")}`
     );
+  }
+
+  // ── Signal: Suspicious Path Tokens ────────────────────────────────────
+  const PATH_SUSPICIOUS_KEYWORDS = ["phish", "malicious", "login", "verify", "account-update", "credential", "pay"];
+  const pathTokens = path.split(/[\/\-_\.=&?]/).filter(Boolean);
+  let pathSuspiciousCount = 0;
+  const pathMatchedKeywords: string[] = [];
+  
+  for (const token of pathTokens) {
+    const lowerToken = token.toLowerCase();
+    for (const kw of PATH_SUSPICIOUS_KEYWORDS) {
+      if (lowerToken.includes(kw) && !pathMatchedKeywords.includes(kw)) {
+        pathSuspiciousCount++;
+        pathMatchedKeywords.push(kw);
+      }
+    }
+  }
+  if (pathSuspiciousCount > 0) {
+    flags.push(`Suspicious path keywords detected: ${pathMatchedKeywords.join(", ")}`);
   }
 
   // ── Signal: Brand Typosquatting ───────────────────────────────────────
@@ -315,6 +341,7 @@ export function analyzeURL(urlStr: string): HeuristicResult {
 
   // Keyword / brand signals
   score += Math.min(suspiciousWordsCount * 12, 40);
+  if (pathSuspiciousCount > 0) score += Math.min(pathSuspiciousCount * 15, 30);
 
   // Brand typosquat — recheck inline (avoids double loop)
   for (const brand of BRAND_NAMES) {

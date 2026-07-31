@@ -125,10 +125,21 @@ export async function POST(request: Request) {
 
     // ── 4. SSRF protection ────────────────────────────────────────────────
     if (isDisallowedTarget(parsed.hostname)) {
-      return NextResponse.json(
-        { error: "Target is not allowed for security reasons." },
-        { status: 400 }
-      );
+      return NextResponse.json({
+        url: targetUrl,
+        threatLevel: "safe",
+        score: 0,
+        status: "LOCAL_IP_DETECTED",
+        message: "Target is a private/internal network IP address (RFC 1918) and cannot be reached over the public internet.",
+        scannedAt: new Date().toISOString(),
+        details: {
+          virusTotal: { status: "skipped", detections: 0, total: 1, skipped: true },
+          googleSafeBrowsing: { status: "skipped", skipped: true },
+          phishing: { probability: 0, indicators: [] },
+          ssl: { valid: false, issuer: "Unknown", expiry: "Unknown" },
+          reputation: { score: 100, category: "LOCAL_IP" }
+        }
+      });
     }
 
     // ── 5. GuardAI Lexical Heuristics (always runs — no external dependency)
