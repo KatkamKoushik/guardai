@@ -110,39 +110,8 @@ export default function ScanInterface() {
     };
   };
 
-  const exportPDF = async () => {
-    const reportEl = document.getElementById("diagnostic-report");
-    if (!reportEl || isExporting) return;
-    setIsExporting(true);
-    try {
-      const { default: html2canvas } = await import("html2canvas");
-      const { default: jsPDF } = await import("jspdf");
-
-      const canvas = await html2canvas(reportEl, {
-        scale: 2,
-        useCORS: true,
-        allowTaint: true,
-        logging: false,
-        backgroundColor: '#0a0a0a',
-        onclone: (clonedDoc) => {
-          const clonedEl = clonedDoc.getElementById('diagnostic-report');
-          if (clonedEl) clonedEl.style.backgroundColor = '#0a0a0a';
-        }
-      });
-
-      const imgData = canvas.toDataURL("image/png");
-      const pdf = new jsPDF("p", "mm", "a4");
-      const pdfWidth = pdf.internal.pageSize.getWidth();
-      const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
-
-      pdf.addImage(imgData, "PNG", 0, 0, pdfWidth, pdfHeight);
-      pdf.save(`GuardAI_Report_${Date.now()}.pdf`);
-    } catch (error) {
-      console.error("PDF Generation Failed:", error);
-      alert("Failed to generate PDF. Please try again.");
-    } finally {
-      setIsExporting(false);
-    }
+  const exportPDF = () => {
+    window.print();
   };
 
   const getThreatColor = (level: string) => {

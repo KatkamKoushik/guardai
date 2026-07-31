@@ -1,6 +1,43 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
+
+function AnimatedCounter({ value, fallback }: { value: number | null, fallback: string }) {
+  const [count, setCount] = useState(0);
+  const nodeRef = useRef<HTMLSpanElement>(null);
+  const [isInView, setIsInView] = useState(false);
+
+  useEffect(() => {
+    if (!nodeRef.current) return;
+    const observer = new IntersectionObserver(([entry]) => {
+      if (entry.isIntersecting) setIsInView(true);
+    });
+    observer.observe(nodeRef.current);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (!isInView || value === null || value === 0) return;
+    let startTimestamp: number | null = null;
+    const duration = 2000;
+    
+    const step = (timestamp: number) => {
+      if (!startTimestamp) startTimestamp = timestamp;
+      const progress = Math.min((timestamp - startTimestamp) / duration, 1);
+      const easeProgress = 1 - Math.pow(1 - progress, 3);
+      setCount(Math.floor(easeProgress * value));
+      if (progress < 1) {
+        window.requestAnimationFrame(step);
+      } else {
+        setCount(value);
+      }
+    };
+    window.requestAnimationFrame(step);
+  }, [isInView, value]);
+
+  if (value === null) return <span ref={nodeRef}>{fallback}</span>;
+  return <span ref={nodeRef}>{count.toLocaleString()}</span>;
+}
 import { motion } from "framer-motion";
 import { gsap } from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
@@ -62,6 +99,18 @@ const features = [
 
 export default function Home() {
   const featuresRef = useRef<HTMLDivElement>(null);
+  const [totalScans, setTotalScans] = useState<number | null>(null);
+
+  useEffect(() => {
+    fetch('/api/stats')
+      .then(res => res.json())
+      .then(data => {
+        if (typeof data.totalScans === 'number') {
+          setTotalScans(data.totalScans);
+        }
+      })
+      .catch(console.error);
+  }, []);
 
   useEffect(() => {
     if (!featuresRef.current) return;
@@ -169,8 +218,16 @@ export default function Home() {
             </p>
 
             <div className="grid grid-cols-3 gap-8 max-w-lg mx-auto">
+              <div>
+                <div className="text-2xl md:text-3xl font-bold text-gradient-cyan" style={{ fontFamily: "var(--font-heading)" }}>
+                  <AnimatedCounter value={totalScans} fallback="10M+" />
+                </div>
+                <div className="text-xs text-white/40 mt-1" style={{ fontFamily: "var(--font-mono)" }}>
+                  URLs Scanned
+                </div>
+              </div>
+              
               {[
-                { value: "10M+", label: "URLs Scanned" },
                 { value: "99.9%", label: "Uptime" },
                 { value: "<50ms", label: "Response Time" },
               ].map((stat, i) => (

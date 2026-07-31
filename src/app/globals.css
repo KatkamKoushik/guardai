@@ -138,3 +138,26 @@ body {
     text-wrap: balance;
   }
 }
+
+@media print {
+  nav, header, footer, button { display: none !important; }
+  @page {
+    size: A4 portrait;
+    margin: 10mm;
+  }
+  body {
+    background-color: #0a0a0a !important;
+    color: #ffffff !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+  .no-print {
+    display: none !important;
+  }
+  #diagnostic-report {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    box-shadow: none !important;
+  }
+}
