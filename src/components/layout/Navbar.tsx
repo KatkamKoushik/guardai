@@ -97,26 +97,41 @@ export default function Navbar() {
             )}
           </div>
 
-          <button
-            type="button"
-            onClick={() => setIsMobileOpen(!isMobileOpen)}
-            className="md:hidden w-10 h-10 flex flex-col items-center justify-center gap-1.5"
-            aria-label="Toggle navigation menu"
-            aria-expanded={isMobileOpen}
-          >
-            <motion.span
-              animate={isMobileOpen ? { rotate: 45, y: 6 } : { rotate: 0, y: 0 }}
-              className="w-6 h-[1px] bg-white/60"
-            />
-            <motion.span
-              animate={isMobileOpen ? { opacity: 0 } : { opacity: 1 }}
-              className="w-6 h-[1px] bg-white/60"
-            />
-            <motion.span
-              animate={isMobileOpen ? { rotate: -45, y: -6 } : { rotate: 0, y: 0 }}
-              className="w-6 h-[1px] bg-white/60"
-            />
-          </button>
+          <div className="flex items-center gap-3 md:hidden relative z-50">
+            {status === "authenticated" ? (
+              <div className="flex items-center justify-center w-10 h-10 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-500 font-bold">
+                 {session.user?.name?.[0]?.toUpperCase() || session.user?.email?.[0]?.toUpperCase() || "U"}
+              </div>
+            ) : (
+              <Link
+                href="/auth/login"
+                className="px-4 py-3 text-xs tracking-wider bg-[#00F0FF]/10 border border-[#00F0FF]/30 text-[#00F0FF] rounded-lg font-mono"
+              >
+                LOGIN
+              </Link>
+            )}
+
+            <button
+              type="button"
+              onClick={() => setIsMobileOpen(!isMobileOpen)}
+              className="w-10 h-10 flex flex-col items-center justify-center gap-1.5"
+              aria-label="Toggle navigation menu"
+              aria-expanded={isMobileOpen}
+            >
+              <motion.span
+                animate={isMobileOpen ? { rotate: 45, y: 6 } : { rotate: 0, y: 0 }}
+                className="w-6 h-[1px] bg-white/60"
+              />
+              <motion.span
+                animate={isMobileOpen ? { opacity: 0 } : { opacity: 1 }}
+                className="w-6 h-[1px] bg-white/60"
+              />
+              <motion.span
+                animate={isMobileOpen ? { rotate: -45, y: -6 } : { rotate: 0, y: 0 }}
+                className="w-6 h-[1px] bg-white/60"
+              />
+            </button>
+          </div>
         </div>
       </motion.nav>
 
@@ -146,6 +161,48 @@ export default function Navbar() {
                   </Link>
                 </motion.div>
               ))}
+
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: navLinks.length * 0.1 }}
+                className="mt-6 pt-6 border-t border-white/10"
+              >
+                {status === "authenticated" ? (
+                  <div className="flex flex-col gap-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-12 h-12 rounded-full bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-500 font-bold text-xl">
+                        {session.user?.name?.[0]?.toUpperCase() || session.user?.email?.[0]?.toUpperCase() || "U"}
+                      </div>
+                      <div className="flex flex-col">
+                        <span className="text-sm tracking-wider text-white" style={{ fontFamily: "var(--font-mono)" }}>
+                          {session.user?.name || "Verified User"}
+                        </span>
+                        <span className="text-xs text-white/50">{session.user?.email}</span>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => {
+                        setIsMobileOpen(false);
+                        signOut({ callbackUrl: '/' });
+                      }}
+                      className="w-full px-4 py-3 text-sm tracking-wider bg-red-500/10 border border-red-500/30 text-red-500 rounded-lg hover:bg-red-500/20 transition-all text-center z-50 relative mt-2"
+                      style={{ fontFamily: "var(--font-mono)" }}
+                    >
+                      DISCONNECT
+                    </button>
+                  </div>
+                ) : (
+                  <Link
+                    href="/auth/login"
+                    onClick={() => setIsMobileOpen(false)}
+                    className="block w-full px-4 py-3 text-sm tracking-wider bg-[#00F0FF]/10 border border-[#00F0FF]/30 text-[#00F0FF] rounded-lg hover:bg-[#00F0FF]/20 transition-all text-center z-50 relative"
+                    style={{ fontFamily: "var(--font-mono)" }}
+                  >
+                    CONNECT ACCOUNT
+                  </Link>
+                )}
+              </motion.div>
             </div>
           </motion.div>
         )}
