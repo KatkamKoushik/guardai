@@ -102,7 +102,7 @@ export default function Home() {
       <HeroSection />
 
       <section ref={featuresRef} className="relative z-10 px-4 py-32">
-        <div className="max-w-6xl mx-auto">
+        <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <motion.div
             initial={{ opacity: 0, y: 30 }}
             whileInView={{ opacity: 1, y: 0 }}
@@ -121,7 +121,7 @@ export default function Home() {
             </p>
           </motion.div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
             {features.map((feature, i) => (
               <Link key={i} href={feature.href} className="feature-card block">
                 <GlassCard className="group cursor-pointer transition-all duration-300 hover:scale-[1.02] hover:border-[#00F0FF]/50 hover:shadow-[0_0_15px_rgba(0,240,255,0.2)] h-full">
@@ -136,12 +136,12 @@ export default function Home() {
                     {feature.icon}
                   </div>
                   <h3
-                    className="text-xl font-bold mb-2"
+                    className="text-base sm:text-lg font-bold mb-2"
                     style={{ fontFamily: "var(--font-heading)" }}
                   >
                     {feature.title}
                   </h3>
-                  <p className="text-sm text-white/40 leading-relaxed">
+                  <p className="text-xs sm:text-sm text-white/40 leading-relaxed">
                     {feature.description}
                   </p>
                 </GlassCard>
@@ -152,7 +152,7 @@ export default function Home() {
       </section>
 
       <section className="relative z-10 px-4 py-32">
-        <div className="max-w-4xl mx-auto text-center">
+        <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <motion.div
             initial={{ opacity: 0, y: 30 }}
             whileInView={{ opacity: 1, y: 0 }}
@@ -176,7 +176,7 @@ export default function Home() {
       </section>
 
       <footer className="relative z-10 border-t border-white/5 py-12 px-4">
-        <div className="max-w-6xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
+        <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col md:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-2">
             <div className="w-6 h-6 rounded-md bg-gradient-to-br from-[#00F0FF] to-[#00FF66] flex items-center justify-center">
               <span className="text-[#050505] text-xs font-bold" style={{ fontFamily: "var(--font-heading)" }}>

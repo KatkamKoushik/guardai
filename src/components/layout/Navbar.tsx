@@ -41,7 +41,7 @@ export default function Navbar() {
             : "bg-black/95 backdrop-blur-md py-5"
         )}
       >
-        <div className="max-w-7xl mx-auto px-6 flex items-center justify-between">
+        <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-wrap items-center justify-between gap-2 md:gap-6">
           <Link href="/" className="flex items-center gap-2">
             <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#00F0FF] to-[#00FF66] flex items-center justify-center">
               <span className="text-[#050505] font-bold text-sm" style={{ fontFamily: "var(--font-heading)" }}>
@@ -126,7 +126,7 @@ export default function Navbar() {
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
-            className="fixed inset-0 z-50 bg-black pt-24 px-6 md:hidden"
+            className="fixed inset-0 z-50 bg-black/95 backdrop-blur-lg pt-24 px-6 md:hidden"
           >
             <div className="flex flex-col gap-2">
               {navLinks.map((link, i) => (

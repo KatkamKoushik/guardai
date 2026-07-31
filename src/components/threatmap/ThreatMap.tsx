@@ -64,12 +64,12 @@ export default function ThreatMap() {
 
   return (
     <section className="relative min-h-screen px-4 py-24 z-10">
-      <div className="max-w-7xl mx-auto">
+      <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         
         {/* Header */}
-        <div className="text-center mb-8 relative z-20">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8 relative z-20">
           <h2
-            className="text-4xl md:text-5xl font-bold tracking-tighter mb-4"
+            className="text-4xl md:text-5xl font-bold tracking-tighter"
             style={{ fontFamily: "var(--font-heading)" }}
           >
             <span className="text-gradient-threat">LIVE</span> THREAT TELEMETRY
@@ -87,10 +87,10 @@ export default function ThreatMap() {
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
           {/* Main 3D View */}
           <div className="lg:col-span-3 relative">
-            <GlassCard className="h-[600px] relative overflow-hidden" hover3D={false}>
+            <GlassCard className="w-full h-[280px] sm:h-[400px] md:h-[500px] relative overflow-hidden" hover3D={false}>
               
               {/* HUD Overlay Filters */}
-              <div className="absolute top-4 left-4 z-10 flex gap-2">
+              <div className="flex flex-wrap items-center gap-2 mb-4 z-10 relative pt-4 pl-4">
                 {["All", "Malware", "Phishing", "Botnet"].map((f) => (
                   <button
                     type="button"

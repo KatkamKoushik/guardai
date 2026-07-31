@@ -103,12 +103,12 @@ export default function HeroSection() {
           initial={{ y: 20, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           transition={{ duration: 0.8, delay: 3.8 }}
-          className="flex flex-col sm:flex-row gap-4 justify-center"
+          className="flex flex-col sm:flex-row gap-4 justify-center w-full w-full px-4 sm:px-0"
         >
-          <MagneticButton variant="primary" size="lg" onClick={() => router.push("/scan")}>
+          <MagneticButton variant="primary" size="lg" onClick={() => router.push("/scan")} className="w-full sm:w-auto px-6 py-3 text-sm font-mono">
             INITIATE DEEP SCAN
           </MagneticButton>
-          <MagneticButton variant="secondary" size="lg" onClick={() => router.push("/threats")}>
+          <MagneticButton variant="secondary" size="lg" onClick={() => router.push("/threats")} className="w-full sm:w-auto px-6 py-3 text-sm font-mono">
             VIEW THREAT MAP
           </MagneticButton>
         </motion.div>

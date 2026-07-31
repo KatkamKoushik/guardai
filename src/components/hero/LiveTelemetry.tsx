@@ -158,12 +158,11 @@ export default function LiveTelemetry({
 
   // ── Stats counters ─────────────────────────────────────────────────────
   const statsBlock = showStats && (
-    <div className="grid grid-cols-3 gap-8 max-w-lg mx-auto">
+    <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 text-center max-w-lg mx-auto">
       {/* Total Scans */}
       <div>
         <div
-          className="text-2xl md:text-3xl font-bold text-gradient-cyan"
-          style={{ fontFamily: "var(--font-heading)" }}
+          className="text-3xl sm:text-4xl lg:text-5xl font-bold font-mono text-gradient-cyan"
         >
           {loading ? (
             <span className="opacity-40">—</span>
@@ -184,8 +183,8 @@ export default function LiveTelemetry({
       {/* Threat Count */}
       <div>
         <div
-          className="text-2xl md:text-3xl font-bold"
-          style={{ fontFamily: "var(--font-heading)", color: "#FF003C" }}
+          className="text-3xl sm:text-4xl lg:text-5xl font-bold font-mono"
+          style={{ color: "#FF003C" }}
         >
           {loading ? (
             <span className="opacity-40">—</span>
@@ -206,8 +205,7 @@ export default function LiveTelemetry({
       {/* Live indicator */}
       <div>
         <div
-          className="text-2xl md:text-3xl font-bold text-gradient-cyan"
-          style={{ fontFamily: "var(--font-heading)" }}
+          className="text-3xl sm:text-4xl lg:text-5xl font-bold font-mono text-gradient-cyan"
         >
           99.9%
         </div>
