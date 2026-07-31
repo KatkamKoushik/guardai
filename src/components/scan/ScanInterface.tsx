@@ -37,6 +37,7 @@ export default function ScanInterface() {
   // Streaming State
   const [progress, setProgress] = useState(0);
   const [logs, setLogs] = useState<LogEntry[]>([]);
+  const [isExporting, setIsExporting] = useState(false);
   const [latency, setLatency] = useState(0);
   
   const logsEndRef = useRef<HTMLDivElement>(null);
@@ -110,19 +111,32 @@ export default function ScanInterface() {
   };
 
   const exportPDF = async () => {
-    if (!reportRef.current) return;
+    const reportEl = document.getElementById("diagnostic-report");
+    if (!reportEl || isExporting) return;
+    setIsExporting(true);
     try {
       const html2canvas = (await import("html2canvas")).default;
       const jsPDF = (await import("jspdf")).default;
-      const canvas = await html2canvas(reportRef.current, { backgroundColor: "#050505" });
+      const canvas = await html2canvas(reportEl, {
+        backgroundColor: "#050505",
+        scale: 2,             // retina-quality capture
+        useCORS: true,        // allow cross-origin images
+        allowTaint: true,
+        logging: false,
+      });
       const imgData = canvas.toDataURL("image/png");
-      const pdf = new jsPDF("p", "mm", "a4");
+      const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
       const pdfWidth = pdf.internal.pageSize.getWidth();
       const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
-      pdf.addImage(imgData, "PNG", 0, 0, pdfWidth, pdfHeight);
-      pdf.save("GuardAI_ScanReport.pdf");
+      // If the rendered height overflows one page, scale it to fit
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      const finalHeight = Math.min(pdfHeight, pageHeight);
+      pdf.addImage(imgData, "PNG", 0, 0, pdfWidth, finalHeight);
+      pdf.save("GuardAI_Diagnostic_Report.pdf");
     } catch (error) {
-      console.error("Error generating PDF:", error);
+      console.error("[exportPDF] Error generating PDF:", error);
+    } finally {
+      setIsExporting(false);
     }
   };
 
@@ -241,7 +255,7 @@ export default function ScanInterface() {
               exit={{ opacity: 0, height: 0, marginTop: 0 }}
               className="overflow-hidden"
             >
-              <div ref={reportRef} className="bg-[#050505] p-4 md:p-6 rounded-2xl border border-white/10 relative">
+              <div id="diagnostic-report" ref={reportRef} className="bg-[#050505] p-4 md:p-6 rounded-2xl border border-white/10 relative">
                 
                 {/* Critical Pulse Glow Background */}
                 {result.threatLevel === "critical" && (
@@ -261,12 +275,25 @@ export default function ScanInterface() {
                     <button 
                       type="button"
                       onClick={exportPDF}
-                      className="px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-xs md:text-sm font-mono transition-colors flex items-center gap-2"
+                      disabled={isExporting}
+                      className="px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-xs md:text-sm font-mono transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                      </svg>
-                      EXPORT PDF
+                      {isExporting ? (
+                        <>
+                          <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+                          </svg>
+                          EXPORTING...
+                        </>
+                      ) : (
+                        <>
+                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                          </svg>
+                          EXPORT PDF
+                        </>
+                      )}
                     </button>
                   </div>
 

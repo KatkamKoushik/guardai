@@ -376,16 +376,31 @@ export async function GET(req: NextRequest) {
         let threatLevel = "safe";
         const isDataIncomplete = vtSkipped && gsbSkipped;
 
+        // ── Determine if the target is completely unreachable ─────────────
+        // A DNS/network failure alone is NOT threat evidence. It means we have
+        // no data, not that the target is malicious. Score from heuristics only.
+        const isUnreachable = dnsFailed;
+
         if (gsbStatus === "flagged" || vtDetections > 4) {
           // CRITICAL OVERRIDE
           finalScore = 95;
           threatLevel = "critical";
           sendEvent({ step: "Score Matrix", status: "error", progress: 90, log: "CRITICAL OVERRIDE: Confirmed Blacklisted / High VT Detections." });
-        } else if ((vtDetections >= 1 && vtDetections <= 3) || dnsFailed) {
-          // HIGH RISK
+        } else if (vtDetections >= 1 && vtDetections <= 3) {
+          // HIGH RISK — VT detections only, NOT DNS failure
           finalScore = 85;
           threatLevel = "high";
-          sendEvent({ step: "Score Matrix", status: "error", progress: 90, log: "HIGH RISK OVERRIDE: Low VT Detections or DNS Failure." });
+          sendEvent({ step: "Score Matrix", status: "error", progress: 90, log: "HIGH RISK: Low VT Detections confirmed." });
+        } else if (isUnreachable) {
+          // UNREACHABLE — target server did not respond; we have no real threat data
+          finalScore = heuristicData.probability;
+          threatLevel = heuristicData.probability >= 60 ? "suspicious" : "safe";
+          sendEvent({
+            step: "Score Matrix",
+            status: "flagged",
+            progress: 90,
+            log: `UNREACHABLE: Target server could not be reached. Threat intelligence unavailable. Score based on lexical analysis only: ${heuristicData.probability}.`,
+          });
         } else if (heuristicData.probability > 60 || !sslValid) {
           // SUSPICIOUS
           finalScore = Math.max(60, heuristicData.probability);
@@ -430,6 +445,102 @@ export async function GET(req: NextRequest) {
           `Scan completed with score ${finalScore}`,
           userId
         );
+
+        // ── Live Notification Dispatch (Bug #3) ──────────────────────────
+        // Fire-and-forget: fetch user's notification settings from DB and
+        // dispatch Telegram / Discord alerts if the score meets the threshold.
+        void (async () => {
+          try {
+            if (finalScore <= 0) return; // never notify for score 0
+            const session = await import("@/lib/auth").then(m => m.auth());
+            if (!session?.user?.email) return;
+
+            const { prisma } = await import("@/lib/db");
+            const user = await prisma.user.findUnique({ where: { email: session.user.email } });
+            if (!user?.id) return;
+
+            const notifications = await prisma.notification.findMany({
+              where: { userId: user.id, isActive: true },
+            });
+            if (notifications.length === 0) return;
+
+            // Map sensitivity config value → minimum score to trigger
+            const thresholdScore = (sensitivity: string): number => {
+              if (sensitivity === "all")            return 0;
+              if (sensitivity === "high_critical")  return 70;
+              if (sensitivity === "critical")       return 90;
+              return 70; // default
+            };
+
+            const severity =
+              finalScore >= 90 ? "critical" :
+              finalScore >= 70 ? "high" :
+              finalScore >= 40 ? "medium" : "low";
+
+            const vtScoreStr = vtSkipped
+              ? "VirusTotal: Skipped (no API key)"
+              : `${vtDetections} / ${Math.max(vtTotal, 1)} engines flagged`;
+
+            const sslStatusStr = sslValid
+              ? `Valid (${sslIssuer})`
+              : "Invalid / Missing";
+
+            const missingHeadersList = [
+              !securityHeaders.hsts        ? "HSTS"         : null,
+              !securityHeaders.xFrameOptions ? "X-Frame-Options" : null,
+              !securityHeaders.csp          ? "CSP"          : null,
+            ].filter(Boolean).join(", ") || "None";
+
+            const alertPayload = {
+              url: targetUrl,
+              score: finalScore,
+              severity,
+              explanation: isUnreachable
+                ? "Target server could not be reached. Score is based on lexical analysis only."
+                : `GuardAI Live Deep Scan detected a ${
+                    threatLevel === "critical" ? "confirmed threat" :
+                    threatLevel === "high"     ? "high-risk target" :
+                    "suspicious pattern"
+                  } on this target.`,
+              vtScore: vtScoreStr,
+              sslStatus: sslStatusStr,
+              missingHeaders: missingHeadersList,
+              mlScore: `Phishing Probability: ${heuristicData.probability}%`,
+              action:
+                threatLevel === "critical" ? "Isolate endpoints immediately and block at perimeter." :
+                threatLevel === "high"     ? "Block at network perimeter and investigate." :
+                threatLevel === "suspicious" ? "Monitor closely and restrict access." :
+                "No immediate action required.",
+              scanId: user.id, // use userId as reference; replace with real scan record ID if stored
+            } as const;
+
+            const { sendTelegramAlert, sendDiscordWebhook } = await import("@/lib/notifications");
+
+            for (const notif of notifications) {
+              const config = notif.config as Record<string, string>;
+              const sensitivity = config.alertSensitivity || "high_critical";
+              const minScore = thresholdScore(sensitivity);
+
+              if (finalScore < minScore) continue; // below user's threshold
+
+              if (notif.platform === "telegram" && config.botToken && config.chatId) {
+                try {
+                  await sendTelegramAlert(config.botToken, config.chatId, alertPayload);
+                } catch (e) {
+                  console.error("[stream] Telegram notification failed:", e);
+                }
+              } else if (notif.platform === "discord" && config.webhookUrl) {
+                try {
+                  await sendDiscordWebhook(config.webhookUrl, alertPayload);
+                } catch (e) {
+                  console.error("[stream] Discord notification failed:", e);
+                }
+              }
+            }
+          } catch (notifErr) {
+            console.error("[stream] Notification dispatch error:", notifErr);
+          }
+        })();
 
         sendEvent({ step: "Complete", status: "success", progress: 100, log: "Scan complete.", result: resultData });
         controller.close();
