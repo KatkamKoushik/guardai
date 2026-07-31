@@ -115,26 +115,26 @@ export default function ScanInterface() {
     if (!reportEl || isExporting) return;
     setIsExporting(true);
     try {
-      const html2canvas = (await import("html2canvas")).default;
-      const jsPDF = (await import("jspdf")).default;
+      const { default: html2canvas } = await import("html2canvas");
+      const { default: jsPDF } = await import("jspdf");
+
       const canvas = await html2canvas(reportEl, {
-        backgroundColor: "#050505",
-        scale: 2,             // retina-quality capture
-        useCORS: true,        // allow cross-origin images
-        allowTaint: true,
+        scale: 2,
+        useCORS: true,
         logging: false,
+        backgroundColor: '#0a0a0a'
       });
+
       const imgData = canvas.toDataURL("image/png");
-      const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+      const pdf = new jsPDF("p", "mm", "a4");
       const pdfWidth = pdf.internal.pageSize.getWidth();
       const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
-      // If the rendered height overflows one page, scale it to fit
-      const pageHeight = pdf.internal.pageSize.getHeight();
-      const finalHeight = Math.min(pdfHeight, pageHeight);
-      pdf.addImage(imgData, "PNG", 0, 0, pdfWidth, finalHeight);
-      pdf.save("GuardAI_Diagnostic_Report.pdf");
+
+      pdf.addImage(imgData, "PNG", 0, 0, pdfWidth, pdfHeight);
+      pdf.save(`GuardAI_Report_${Date.now()}.pdf`);
     } catch (error) {
-      console.error("[exportPDF] Error generating PDF:", error);
+      console.error("PDF Generation Failed:", error);
+      alert("Failed to generate PDF. Please try again.");
     } finally {
       setIsExporting(false);
     }

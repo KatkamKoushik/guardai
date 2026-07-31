@@ -146,13 +146,19 @@ export async function GET(req: NextRequest) {
         
         let dnsRecords: string[] = [];
         let dnsFailed = false;
-        try {
-          const records = await dns.resolveAny(hostname);
-          dnsRecords = records.map((r: any) => r.address || r.value).filter(Boolean);
-          sendEvent({ step: "Network Recon", status: "success", progress: 15, log: `DNS Resolved. Found ${dnsRecords.length} records.` });
-        } catch (error: any) {
-          dnsFailed = true;
-          sendEvent({ step: "Network Recon", status: "flagged", progress: 15, log: `DNS lookup failed (ECONNREFUSED/NXDOMAIN): ${error.message}` });
+        
+        if (net.isIP(hostname)) {
+          dnsRecords = [hostname];
+          sendEvent({ step: "Network Recon", status: "success", progress: 15, log: `Target is already an IP address. Skipping DNS lookup.` });
+        } else {
+          try {
+            const records = await dns.resolveAny(hostname);
+            dnsRecords = records.map((r: any) => r.address || r.value).filter(Boolean);
+            sendEvent({ step: "Network Recon", status: "success", progress: 15, log: `DNS Resolved. Found ${dnsRecords.length} records.` });
+          } catch (error: any) {
+            dnsFailed = true;
+            sendEvent({ step: "Network Recon", status: "flagged", progress: 15, log: `DNS lookup failed (ECONNREFUSED/NXDOMAIN): ${error.message}` });
+          }
         }
 
         let geoIp: {
@@ -480,9 +486,8 @@ export async function GET(req: NextRequest) {
         );
 
         // ── Live Notification Dispatch (Bug #3) ──────────────────────────
-        // Fire-and-forget: fetch user's notification settings from DB and
-        // dispatch Telegram / Discord alerts if the score meets the threshold.
-        void (async () => {
+        // Awaited to prevent Vercel terminating lambda before sending webhook.
+        await (async () => {
           try {
             if (finalScore <= 0) return; // never notify for score 0
             const session = await import("@/lib/auth").then(m => m.auth());

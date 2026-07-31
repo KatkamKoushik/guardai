@@ -258,9 +258,9 @@ export async function POST(request: Request) {
       score = heuristicData.probability;
     }
 
-    // ── 9. Telemetry & Notifications (fire-and-forget, non-blocking) ──────
-    // Run async without awaiting so we don't add latency to the response.
-    void (async () => {
+    // ── 9. Telemetry & Notifications (Awaited for Serverless) ──────
+    // Await the IIFE so Vercel doesn't kill the lambda prematurely.
+    await (async () => {
       try {
         if (score > 50) {
           const { prisma } = await import("@/lib/db");

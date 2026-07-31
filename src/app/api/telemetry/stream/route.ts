@@ -29,21 +29,34 @@ export async function GET(request: Request) {
 
         try {
           // 1. Fetch newly added threats from the real database pipeline
-          const newThreats = await prisma.threatTelemetry.findMany({
-            where: { timestamp: { gt: lastPolledTime } },
-            orderBy: { timestamp: "asc" },
+          const newScans = await prisma.scan.findMany({
+            where: { createdAt: { gt: lastPolledTime } },
+            orderBy: { createdAt: "desc" },
             take: 10,
           });
 
           // 2. Fetch total counts
-          const threatCount = await prisma.threatTelemetry.count();
-          const scanCount = await prisma.auditLog.count();
+          const threatCount = await prisma.scan.count({ where: { threatLevel: { in: ['high', 'critical'] } } });
+          const scanCount = await prisma.scan.count();
 
-          if (newThreats.length > 0) {
+          if (newScans.length > 0) {
             // Send each new threat as its own payload
-            for (const threat of newThreats) {
+            for (const scan of newScans) {
+              let domain = scan.url;
+              try { domain = new URL(scan.url).hostname; } catch {}
+              const details = scan.details as any;
+
               const payload = {
-                newThreat: threat,
+                newThreat: {
+                  id: scan.id,
+                  domain,
+                  threatType: scan.threatLevel,
+                  ipAddress: details?.geoIp?.query || null,
+                  latitude: details?.geoIp?.lat || null,
+                  longitude: details?.geoIp?.lon || null,
+                  countryCode: details?.geoIp?.country || null,
+                  timestamp: scan.createdAt.toISOString()
+                },
                 threatCount,
                 scanCount,
                 timestamp: new Date().toISOString(),
@@ -51,8 +64,8 @@ export async function GET(request: Request) {
               const message = `data: ${JSON.stringify(payload)}\n\n`;
               controller.enqueue(encoder.encode(message));
               
-              if (threat.timestamp > lastPolledTime) {
-                lastPolledTime = threat.timestamp;
+              if (scan.createdAt > lastPolledTime) {
+                lastPolledTime = scan.createdAt;
               }
             }
           } else {
