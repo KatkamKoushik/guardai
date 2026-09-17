@@ -1,5 +1,13 @@
 # GuardAI: Next-Generation Cybersecurity and Threat Intelligence Platform
 
+[![Next.js](https://img.shields.io/badge/Next.js-16-black?style=flat-square&logo=next.js)](https://nextjs.org/)
+[![React](https://img.shields.io/badge/React-19-blue?style=flat-square&logo=react)](https://react.dev/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![Tailwind CSS](https://img.shields.io/badge/Tailwind-v4-38B2AC?style=flat-square&logo=tailwind-css&logoColor=white)](https://tailwindcss.com/)
+[![Three.js](https://img.shields.io/badge/Three.js-WebGL-black?style=flat-square&logo=three.js)](https://threejs.org/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green?style=flat-square)](LICENSE)
+[![Deployment](https://img.shields.io/badge/Deployment-Vercel-000000?style=flat-square&logo=vercel)](https://guardai-six.vercel.app)
+
 I designed and engineered GuardAI as a comprehensive, real-time threat intelligence and digital defense platform. My goal with this project was to bridge the gap between high-performance heuristic security scanning, live global threat telemetry, and immersive data visualization. 
 
 By combining modern web technologies, WebGL shaders, Three.js 3D modeling, streaming architectures, and statistical lexical algorithms, I created a security dashboard that delivers actionable threat intelligence alongside a responsive, modern interface.
