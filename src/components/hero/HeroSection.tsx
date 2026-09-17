@@ -117,7 +117,7 @@ export default function HeroSection() {
           transition={{ duration: 1, delay: 4.5 }}
           className="mt-16 flex items-center gap-2 text-white/30"
         >
-          <div className="w-1 h-1 rounded-full bg-[#00FF66] animate-pulse" />
+          <div className="w-1 h-1 rounded-full bg-[#00FF66] animate-pulse" style={{ willChange: "opacity" }} />
           <span className="text-xs" style={{ fontFamily: "var(--font-mono)" }}>
             REAL-TIME MONITORING ACTIVE
           </span>
@@ -133,6 +133,7 @@ export default function HeroSection() {
         <motion.div
           animate={{ y: [0, 10, 0] }}
           transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
+          style={{ willChange: "transform" }}
           className="flex flex-col items-center gap-2"
         >
           <span className="text-xs text-white/30" style={{ fontFamily: "var(--font-mono)" }}>

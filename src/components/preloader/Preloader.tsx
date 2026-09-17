@@ -45,6 +45,7 @@ export default function Preloader() {
           ref={containerRef}
           initial={{ opacity: 1 }}
           exit={{ opacity: 0 }}
+          style={{ willChange: "opacity" }}
           className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-[#050505]"
         >
           <div className="relative">
@@ -64,11 +65,15 @@ export default function Preloader() {
               Decrypting Assets...
             </motion.div>
 
-            <motion.div className="mt-8 w-64 h-[1px] bg-white/10">
+            <motion.div className="mt-8 w-64 h-[1px] bg-white/10 overflow-hidden">
               <motion.div
-                className="h-full bg-gradient-to-r from-[#00F0FF] to-[#00FF66]"
-                style={{ width: `${progress}%` }}
-                transition={{ duration: 0.1 }}
+                className="h-full w-full bg-gradient-to-r from-[#00F0FF] to-[#00FF66] origin-left"
+                style={{
+                  // GPU-only: scaleX avoids layout recalculation that 'width' triggers
+                  transform: `scaleX(${progress / 100})`,
+                  willChange: "transform",
+                  transition: "transform 0.1s linear",
+                }}
               />
             </motion.div>
 

@@ -57,6 +57,7 @@ export default function GlassCard({
         rotateX: hover3D ? rotateX : 0,
         rotateY: hover3D ? rotateY : 0,
         transformStyle: "preserve-3d",
+        willChange: "transform",
       }}
       className={cn(
         "glass rounded-2xl p-6 transition-all duration-300",

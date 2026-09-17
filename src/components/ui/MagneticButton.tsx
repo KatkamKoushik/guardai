@@ -70,7 +70,7 @@ export default function MagneticButton({
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={handleMouseLeave}
       disabled={disabled}
-      style={{ x: springX, y: springY }}
+      style={{ x: springX, y: springY, willChange: "transform" }}
       className={cn(
         "relative overflow-hidden rounded-lg font-medium transition-all duration-300",
         "backdrop-blur-sm",
@@ -85,6 +85,7 @@ export default function MagneticButton({
         initial={{ x: "-100%" }}
         animate={{ x: isHovered ? "100%" : "-100%" }}
         transition={{ duration: 0.6, ease: "easeInOut" }}
+        style={{ willChange: "transform" }}
       />
       <span className="relative z-10">{children}</span>
     </motion.button>

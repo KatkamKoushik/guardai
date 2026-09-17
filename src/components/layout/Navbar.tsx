@@ -32,6 +32,7 @@ export default function Navbar() {
         initial={{ y: -100 }}
         animate={{ y: 0 }}
         transition={{ duration: 0.8, delay: 3.5, ease: "easeOut" }}
+        style={{ willChange: "transform" }}
         className={cn(
           "fixed top-0 left-0 right-0 z-50 transition-all duration-500",
           isScrolled
@@ -66,7 +67,7 @@ export default function Navbar() {
 
           <div className="hidden md:flex items-center gap-4">
             <div className="flex items-center gap-2 px-3 py-1.5 rounded-full glass">
-              <div className="w-1.5 h-1.5 rounded-full bg-[#00FF66] animate-pulse" />
+              <div className="w-1.5 h-1.5 rounded-full bg-[#00FF66] animate-pulse" style={{ willChange: "opacity" }} />
               <span className="text-xs text-white/50" style={{ fontFamily: "var(--font-mono)" }}>
                 ONLINE
               </span>
@@ -106,6 +107,7 @@ export default function Navbar() {
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
+            style={{ willChange: "transform, opacity" }}
             className="fixed inset-0 z-40 glass-strong pt-24 px-6 md:hidden"
           >
             <div className="flex flex-col gap-2">

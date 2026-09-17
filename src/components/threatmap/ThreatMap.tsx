@@ -74,7 +74,7 @@ export default function ThreatMap() {
           </h2>
           <div className="flex items-center justify-center gap-4 text-sm" style={{ fontFamily: "var(--font-mono)" }}>
             <div className="flex items-center gap-2">
-              <div className={`w-2 h-2 rounded-full ${systemStatus === 'Connected' ? 'bg-[#00FF66] animate-pulse' : 'bg-red-500'}`} />
+              <div className={`w-2 h-2 rounded-full ${systemStatus === 'Connected' ? 'bg-[#00FF66] animate-pulse' : 'bg-red-500'}`} style={{ willChange: "opacity" }} />
               <span className="text-white/60 uppercase">{systemStatus}</span>
             </div>
             <span className="text-white/20">|</span>
@@ -127,8 +127,16 @@ export default function ThreatMap() {
               </div>
 
               {/* 3D Canvas */}
-              <div className="absolute inset-0">
-                <Canvas camera={{ position: [0, 0, 5], fov: 45 }} gl={{ antialias: true, alpha: true }}>
+              <div className="absolute inset-0" style={{ willChange: "transform" }}>
+                <Canvas
+                  camera={{ position: [0, 0, 5], fov: 45 }}
+                  dpr={[1, 2]}
+                  gl={{
+                    antialias: false,
+                    alpha: true,
+                    powerPreference: "high-performance",
+                  }}
+                >
                   <GlobeScene activeThreats={filteredThreats} />
                 </Canvas>
               </div>

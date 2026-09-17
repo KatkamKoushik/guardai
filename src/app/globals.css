@@ -68,6 +68,7 @@ body {
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   border: 1px solid rgba(255, 255, 255, 0.08);
+  will-change: transform, opacity;
 }
 
 .glass-strong {
@@ -75,6 +76,7 @@ body {
   backdrop-filter: blur(40px);
   -webkit-backdrop-filter: blur(40px);
   border: 1px solid rgba(255, 255, 255, 0.12);
+  will-change: transform, opacity;
 }
 
 .neon-glow-cyan {
@@ -108,20 +110,23 @@ body {
   overflow: hidden;
 }
 
+/* GPU-accelerated: uses transform instead of left to avoid layout recalculation */
 .scan-line::after {
   content: "";
   position: absolute;
   top: 0;
-  left: -100%;
+  left: 0;
   width: 100%;
   height: 2px;
   background: linear-gradient(90deg, transparent, #00F0FF, transparent);
+  will-change: transform;
   animation: scanLine 2s ease-in-out infinite;
+  transform: translateX(-100%);
 }
 
 @keyframes scanLine {
-  0% { left: -100%; }
-  100% { left: 100%; }
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
 }
 
 @keyframes pulse-glow {
@@ -136,6 +141,7 @@ body {
 
 .animate-float {
   animation: float 3s ease-in-out infinite;
+  will-change: transform;
 }
 
 @layer utilities {

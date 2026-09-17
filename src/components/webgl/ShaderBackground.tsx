@@ -163,10 +163,10 @@ function Particles() {
 
 export default function ShaderBackground() {
   return (
-    <div className="fixed inset-0 z-0">
+    <div className="fixed inset-0 z-0" style={{ willChange: "transform" }}>
       <Canvas
         camera={{ position: [0, 0, 8], fov: 60 }}
-        dpr={[1, 1.5]}
+        dpr={[1, 2]}
         gl={{
           antialias: false,
           alpha: true,

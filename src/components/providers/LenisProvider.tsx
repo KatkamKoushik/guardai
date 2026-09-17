@@ -18,9 +18,12 @@ export default function LenisProvider({
 
   useEffect(() => {
     const lenis = new Lenis({
+      // Desktop: smooth scroll with custom easing
       duration: 1.2,
       easing: (t: number) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
-      touchMultiplier: 2,
+      // Mobile: syncTouch:false means native iOS/Android inertia takes over instead
+      // of JS-intercepted touch events. Prevents stutter and GPU overheating on mobile.
+      syncTouch: false,
       infinite: false,
     });
 
