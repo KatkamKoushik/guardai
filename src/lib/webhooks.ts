@@ -150,3 +150,22 @@ if (typeof setInterval !== "undefined") {
   }, 300_000);
 }
 
+
+import { timingSafeEqual } from "crypto";
+
+/**
+ * Constant-time string comparison to defend against timing side-channel attacks
+ * on secret webhook tokens or API keys (Control 09-B017 & 09-N003).
+ */
+export function timingSafeCompare(known: string, provided: string): boolean {
+  if (typeof known !== "string" || typeof provided !== "string") {
+    return false;
+  }
+  const knownBuffer = Buffer.from(known);
+  const providedBuffer = Buffer.from(provided);
+
+  if (knownBuffer.length !== providedBuffer.length) {
+    return false;
+  }
+  return timingSafeEqual(knownBuffer, providedBuffer);
+}

@@ -6,10 +6,11 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
   test: {
+    include: ["tests/**/*.test.ts"],
+    exclude: ["e2e/**", "node_modules/**"],
     alias: {
       "@": path.resolve(__dirname, "./src"),
     },
     testTimeout: 15000,
   },
 });
-

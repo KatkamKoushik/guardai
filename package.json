@@ -11,7 +11,9 @@
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "test:stress": "vitest run tests/stress.test.ts",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.11.3",
@@ -45,6 +47,7 @@
   },
   "devDependencies": {
     "@next/env": "^16.4.3",
+    "@playwright/test": "^1.58.2",
     "@prisma/config": "^7.9.1",
     "@tailwindcss/postcss": "^4",
     "@types/geoip-lite": "^1.4.4",

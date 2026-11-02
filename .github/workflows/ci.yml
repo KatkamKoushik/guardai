@@ -1,16 +1,20 @@
-name: CI
+name: CI Pipeline
 
 on:
   push:
-    branches: [ master, main ]
+    branches: [ master, main, "feature/**", "docs/**" ]
   pull_request:
     branches: [ master, main ]
 
-jobs:
-  validate:
-    name: Lint, Test & Build
-    runs-on: ubuntu-latest
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
+jobs:
+  # ── Job 1: Dependency Audit & Static Typing ──────────────────────────────────
+  security-and-typecheck:
+    name: Security Audit & Typecheck
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -19,7 +23,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: 'npm'
+          cache: "npm"
 
       - name: Install dependencies from clean lockfile
         run: npm ci
@@ -27,22 +31,110 @@ jobs:
       - name: Generate Prisma client
         run: npx prisma generate
 
-      - name: Run Typecheck
+      - name: Static Typecheck
         run: npm run typecheck
 
-      - name: Run Security & Regression Test Suite
+      - name: Dependency Security Audit
+        run: npm audit --audit-level=high
+
+  # ── Job 2: Unit, Regression & Concurrency Stress Suite ───────────────────────
+  unit-and-stress-tests:
+    name: Unit & Stress Tests (Vitest)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: "npm"
+
+      - name: Install dependencies from clean lockfile
+        run: npm ci
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      - name: Run Full Security, Regression & Stress Suite
         env:
-          DATABASE_URL: "postgresql://mock:mock@localhost:5432/mock"
+          DATABASE_URL: "postgresql://ci_user:ci_pass@localhost:5432/guardai_ci"
           NEXTAUTH_URL: "http://localhost:3000"
           NEXTAUTH_SECRET: "ci-dummy-test-secret-at-least-32-chars-long"
         run: npm test
 
-      - name: Verify Production Build
+  # ── Job 3: Production Build ──────────────────────────────────────────────────
+  production-build:
+    name: Next.js Production Build
+    runs-on: ubuntu-latest
+    needs: [security-and-typecheck]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: "npm"
+
+      - name: Install dependencies from clean lockfile
+        run: npm ci
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      - name: Verify Optimized Production Compilation
         env:
-          DATABASE_URL: "postgresql://mock:mock@localhost:5432/mock"
+          DATABASE_URL: "postgresql://ci_user:ci_pass@localhost:5432/guardai_ci"
           NEXTAUTH_URL: "http://localhost:3000"
           NEXTAUTH_SECRET: "ci-dummy-test-secret-at-least-32-chars-long"
         run: npm run build
 
-      - name: Run Dependency Security Audit
-        run: npm audit --audit-level=critical
+  # ── Job 4: Playwright End-to-End Suite ────────────────────────────────────────
+  e2e-playwright:
+    name: End-to-End Tests (Playwright)
+    runs-on: ubuntu-latest
+    needs: [production-build]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: "npm"
+
+      - name: Install dependencies from clean lockfile
+        run: npm ci
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      - name: Install Playwright Chromium Browser
+        run: npx playwright install --with-deps chromium
+
+      - name: Build Application for E2E Runner
+        env:
+          DATABASE_URL: "postgresql://ci_user:ci_pass@localhost:5432/guardai_ci"
+          NEXTAUTH_URL: "http://localhost:3000"
+          NEXTAUTH_SECRET: "ci-dummy-test-secret-at-least-32-chars-long"
+        run: npm run build
+
+      - name: Run Playwright E2E Suite
+        env:
+          DATABASE_URL: "postgresql://ci_user:ci_pass@localhost:5432/guardai_ci"
+          NEXTAUTH_URL: "http://localhost:3000"
+          NEXTAUTH_SECRET: "ci-dummy-test-secret-at-least-32-chars-long"
+        run: npm run test:e2e
+
+      - name: Upload Playwright Test Report on Failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 14
+

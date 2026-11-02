@@ -40,3 +40,10 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# local checklists and scratch files
+mobile_apps_and_websites_exhaustive_master_checklist.md
+
+# playwright
+/test-results/
+/playwright-report/

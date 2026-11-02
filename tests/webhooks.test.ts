@@ -3,6 +3,7 @@ import {
   validateDiscordWebhookUrl,
   validateTelegramConfig,
   checkRateLimit,
+  timingSafeCompare,
 } from "../src/lib/webhooks";
 
 describe("Webhook & Integration Safety Engine", () => {
@@ -49,32 +50,36 @@ describe("Webhook & Integration Safety Engine", () => {
     it("rejects URLs containing query parameters or fragments", () => {
       const token = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-";
       expect(
-        validateDiscordWebhookUrl(
-          `https://discord.com/api/webhooks/123456789012345678/${token}?test=true`
-        ).valid
+        validateDiscordWebhookUrl(`https://discord.com/api/webhooks/123456789012345678/${token}?param=evil`).valid
       ).toBe(false);
       expect(
-        validateDiscordWebhookUrl(
-          `https://discord.com/api/webhooks/123456789012345678/${token}#frag`
-        ).valid
+        validateDiscordWebhookUrl(`https://discord.com/api/webhooks/123456789012345678/${token}#frag`).valid
+      ).toBe(false);
+    });
+
+    it("rejects malicious or malformed IDs and tokens", () => {
+      expect(validateDiscordWebhookUrl("https://discord.com/api/webhooks/short/token").valid).toBe(false);
+      expect(validateDiscordWebhookUrl("https://discord.com/api/webhooks/123456789012345678/short").valid).toBe(false);
+      expect(
+        validateDiscordWebhookUrl("https://discord.com/api/webhooks/123456789012345678/bad_char$token_that_is_long_enough_to_test")
+          .valid
       ).toBe(false);
     });
   });
 
-  describe("Telegram Credential Validation", () => {
-    it("accepts valid Telegram bot token and numeric chat ID", () => {
+  describe("Telegram Config Validation", () => {
+    it("accepts valid Telegram bot tokens and chat IDs", () => {
       const token = "123456789:ABCdefGHIjklMNOpqrSTUvwxYZ123456789";
-      const chatId = "987654321";
+      const chatId = "-1001234567890";
       const res = validateTelegramConfig(token, chatId);
       expect(res.valid).toBe(true);
       expect(res.maskedToken).toContain("••••");
+      expect(res.maskedToken?.startsWith("123456789:")).toBe(true);
     });
 
-    it("accepts channel usernames as chat ID (@my_channel)", () => {
+    it("accepts username-based chat IDs", () => {
       const token = "123456789:ABCdefGHIjklMNOpqrSTUvwxYZ123456789";
-      const chatId = "@guardai_alerts";
-      const res = validateTelegramConfig(token, chatId);
-      expect(res.valid).toBe(true);
+      expect(validateTelegramConfig(token, "@security_alerts").valid).toBe(true);
     });
 
     it("rejects malformed bot tokens", () => {
@@ -101,5 +106,19 @@ describe("Webhook & Integration Safety Engine", () => {
       expect(blocked.remaining).toBe(0);
     });
   });
-});
 
+  describe("Cryptographic Constant-Time Comparison (Control 09-B017)", () => {
+    it("accurately verifies matching strings in constant time", () => {
+      const secret = "super-secret-token-1234567890";
+      expect(timingSafeCompare(secret, secret)).toBe(true);
+      expect(timingSafeCompare("short", "short")).toBe(true);
+    });
+
+    it("accurately rejects non-matching strings and differing lengths without timing leak", () => {
+      const secret = "super-secret-token-1234567890";
+      expect(timingSafeCompare(secret, "super-secret-token-1234567891")).toBe(false);
+      expect(timingSafeCompare(secret, "short")).toBe(false);
+      expect(timingSafeCompare("", "token")).toBe(false);
+    });
+  });
+});
