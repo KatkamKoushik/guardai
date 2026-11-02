@@ -1,0 +1,184 @@
+openapi: 3.1.0
+info:
+  title: GuardAI Threat Intelligence & Scanner API
+  version: 2.0.0
+  description: >
+    Production-grade cybersecurity intelligence API providing SSRF-defended URL analysis,
+    cryptographic TLS certificate validation, ICANN RDAP registration intelligence,
+    multi-engine threat scoring, and real-time SSE telemetry feeds.
+  contact:
+    name: Katkam Koushik
+    url: https://github.com/KatkamKoushik/guardai
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: http://localhost:3000
+    description: Local development server
+  - url: https://guardai.security
+    description: Production environment
+
+paths:
+  /api/health:
+    get:
+      summary: Liveness Probe
+      description: Returns lightweight runtime telemetry, uptime, Node version, and memory statistics.
+      responses:
+        '200':
+          description: Service is alive and healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+
+  /api/ready:
+    get:
+      summary: Readiness Probe
+      description: Validates database connectivity (`SELECT 1`) with latency instrumentation.
+      responses:
+        '200':
+          description: Service dependencies are fully operational
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadyResponse'
+        '503':
+          description: Database connection is unhealthy or unreachable
+
+  /api/scan:
+    post:
+      summary: Synchronous URL Threat Analysis
+      description: Executes comprehensive synchronous URL analysis across lexical heuristics, SSRF validation, TLS probing, RDAP, and threat intelligence.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - url
+              properties:
+                url:
+                  type: string
+                  description: Target URL or domain to analyze (supports refanged strings like hxxps)
+                  example: "https://example.com"
+      responses:
+        '200':
+          description: Successful threat evaluation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScanResponse'
+        '400':
+          description: Invalid input or SSRF violation rejected
+
+  /api/scan/stream:
+    get:
+      summary: Real-Time Progressive URL Scan (SSE)
+      description: Streams incremental scanning pipeline events via Server-Sent Events (SSE).
+      parameters:
+        - in: query
+          name: url
+          required: true
+          schema:
+            type: string
+          description: Target URL or domain to analyze
+          example: "google.com"
+      responses:
+        '200':
+          description: Real-time event stream
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                description: SSE chunks formatted as `data: {...}\n\n`
+
+  /api/telemetry/stream:
+    get:
+      summary: Global Threat Telemetry Feed (SSE)
+      description: Streams real-time global threat detections and platform counter metrics with adaptive polling and backoff.
+      responses:
+        '200':
+          description: SSE event stream of threat incidents
+          content:
+            text/event-stream:
+              schema:
+                type: string
+
+components:
+  schemas:
+    HealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: "healthy"
+        service:
+          type: string
+          example: "guardai"
+        uptimeSeconds:
+          type: integer
+          example: 3600
+        nodeVersion:
+          type: string
+          example: "v22.12.0"
+        memory:
+          type: object
+          properties:
+            rssMb:
+              type: integer
+            heapUsedMb:
+              type: integer
+            heapTotalMb:
+              type: integer
+
+    ReadyResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: "ready"
+        service:
+          type: string
+          example: "guardai"
+        dependencies:
+          type: object
+          properties:
+            database:
+              type: object
+              properties:
+                status:
+                  type: string
+                  enum: [up, down]
+                latencyMs:
+                  type: integer
+
+    ScanResponse:
+      type: object
+      properties:
+        url:
+          type: string
+        threatLevel:
+          type: string
+          enum: [safe, suspicious, high, critical, offline]
+        score:
+          type: integer
+          minimum: 0
+          maximum: 100
+        verdict:
+          type: string
+        confidence:
+          type: string
+          enum: [HIGH, MEDIUM, LOW]
+        summary:
+          type: string
+        action:
+          type: string
+        limitations:
+          type: array
+          items:
+            type: string
+        details:
+          type: object
+

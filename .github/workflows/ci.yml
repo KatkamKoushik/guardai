@@ -7,33 +7,42 @@ on:
     branches: [ master, main ]
 
 jobs:
-  build:
+  validate:
+    name: Lint, Test & Build
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: latest
-
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
-          cache: 'pnpm'
+          node-version: 22
+          cache: 'npm'
 
-      - name: Install dependencies
-        run: pnpm install --no-frozen-lockfile
+      - name: Install dependencies from clean lockfile
+        run: npm ci
 
       - name: Generate Prisma client
         run: npx prisma generate
 
-      - name: Verify build
+      - name: Run Typecheck
+        run: npm run typecheck
+
+      - name: Run Security & Regression Test Suite
         env:
           DATABASE_URL: "postgresql://mock:mock@localhost:5432/mock"
           NEXTAUTH_URL: "http://localhost:3000"
-          NEXTAUTH_SECRET: "ci-dummy-secret-key-1234567890"
-        run: pnpm run build
+          NEXTAUTH_SECRET: "ci-dummy-test-secret-at-least-32-chars-long"
+        run: npm test
+
+      - name: Verify Production Build
+        env:
+          DATABASE_URL: "postgresql://mock:mock@localhost:5432/mock"
+          NEXTAUTH_URL: "http://localhost:3000"
+          NEXTAUTH_SECRET: "ci-dummy-test-secret-at-least-32-chars-long"
+        run: npm run build
+
+      - name: Run Dependency Security Audit
+        run: npm audit --audit-level=critical

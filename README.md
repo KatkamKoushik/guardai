@@ -1,140 +1,73 @@
-# GuardAI: Next-Generation Cybersecurity and Threat Intelligence Platform
+# GuardAI: Cybersecurity & Threat Intelligence Platform
 
 [![Next.js](https://img.shields.io/badge/Next.js-16-black?style=flat-square&logo=next.js)](https://nextjs.org/)
 [![React](https://img.shields.io/badge/React-19-blue?style=flat-square&logo=react)](https://react.dev/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind-v4-38B2AC?style=flat-square&logo=tailwind-css&logoColor=white)](https://tailwindcss.com/)
-[![Three.js](https://img.shields.io/badge/Three.js-WebGL-black?style=flat-square&logo=three.js)](https://threejs.org/)
+[![Tests](https://img.shields.io/badge/Tests-72%20Passed-brightgreen?style=flat-square)](./tests)
+[![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?style=flat-square&logo=docker&logoColor=white)](./Dockerfile)
+[![OpenAPI 3.1](https://img.shields.io/badge/OpenAPI-3.1-6BA539?style=flat-square&logo=openapi-initiative&logoColor=white)](./docs/openapi.yaml)
+[![Security Policy](https://img.shields.io/badge/Security-Threat%20Model%20Enforced-green?style=flat-square)](SECURITY.md)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green?style=flat-square)](LICENSE)
-[![Deployment](https://img.shields.io/badge/Deployment-Vercel-000000?style=flat-square&logo=vercel)](https://guardai-six.vercel.app)
 
-I designed and engineered GuardAI as a comprehensive, real-time threat intelligence and digital defense platform. My goal with this project was to bridge the gap between high-performance heuristic security scanning, live global threat telemetry, and immersive data visualization. 
-
-By combining modern web technologies, WebGL shaders, Three.js 3D modeling, streaming architectures, and statistical lexical algorithms, I created a security dashboard that delivers actionable threat intelligence alongside a responsive, modern interface.
+GuardAI is an automated threat intelligence, lexical heuristic evaluation, and active cryptographic scanning platform. Designed for security analysts, incident responders, and DevSecOps pipelines, it combines algorithmic URL triage, strict cryptographic network probing, multi-engine reputation intelligence, and 3D WebGL global threat visualization.
 
 ---
 
-## Architecture Overview
+## Architecture & Defense-in-Depth
 
-I structured GuardAI around a decoupled, full-stack Next.js architecture utilizing the App Router, React 19, Server-Sent Events (SSE), and Prisma ORM backed by PostgreSQL. The system processes inputs across three core pipelines:
+GuardAI enforces layered security at every layer of the scanning and alerting lifecycle:
 
-1. Deep URL Scanning Pipeline: An asynchronous multi-stage analysis pipeline that inspects domain DNS, TLS/SSL certificates, VirusTotal intelligence, Google Safe Browsing registries, and heuristic lexical patterns via SSE streams.
-2. Global Threat Telemetry Pipeline: An automated ingestion mechanism that consumes threat indicators from URLhaus feeds, persists them to a database, and broadcasts them live to an interactive 3D WebGL globe.
-3. Event Logging and Notification Pipeline: An audit-compliant record system tracking scanning actions, authentication events, and dispatching webhook alerts to Discord and Telegram.
-
-```
-                      +------------------------------------------+
-                      |               Client Browser             |
-                      |  React 19 / Three.js / GSAP / Lenis     |
-                      +--------------------+---------------------+
-                                           |
-                   HTTP Requests / SSE Subscriptions
-                                           |
-                                           v
-                      +--------------------+---------------------+
-                      |         Next.js App Server Engine        |
-                      +--------------------+---------------------+
-                                           |
-         +-----------------+---------------+-----------------+
-         |                 |               |                 |
-         v                 v               v                 v
-  +--------------+  +--------------+  +----------+    +--------------+
-  |  Deep Scan   |  | Threat Map   |  | Alerts   |    | Auth & User  |
-  |  Engine      |  | SSE Stream   |  | Webhooks |    | NextAuth v5  |
-  +-------+------+  +-------+------+  +----+-----+    +-------+------+
-          |                 |              |                  |
-          |                 +-------+------+                  |
-          |                         |                         |
-          v                         v                         v
-+-------------------+      +-----------------------------------------+
-| External APIs     |      |          Database & Persistence         |
-| - VirusTotal      |      |          Prisma ORM / PostgreSQL        |
-| - Google Safe     |      | - Users, Accounts, Sessions             |
-|   Browsing        |      | - Scans, ThreatTelemetry, Audits        |
-| - URLhaus Feed    |      +-----------------------------------------+
-+-------------------+
+```mermaid
+flowchart TD
+    User([Security Analyst / API Client]) -->|Scan Request| Gateway[Next.js API Gateway]
+    Gateway -->|1. Sanitize & Refang| Heuristics[Lexical Heuristics Engine]
+    Gateway -->|2. Pre-flight DNS Validation| SSRF[SSRF & Egress Controller]
+    SSRF -->|Private/Reserved/Metadata IP| Blocked[400 Bad Request Blocked]
+    SSRF -->|Validated Public IP| Pinned[Pinned IP Transport]
+    Pinned -->|3. Strict Handshake| TLS[Cryptographic TLS Probe]
+    Pinned -->|4. Bounded HTTP Probe| Target[(Target Server)]
+    Gateway -->|5. Reputation Queries| Intel[VirusTotal / Safe Browsing / AbuseIPDB]
+    Intel --> Aggregator[Threat Intelligence Matrix]
+    TLS --> Aggregator
+    Heuristics --> Aggregator
+    Aggregator -->|6. Multi-Dimensional Verdict| Store[(PostgreSQL / Prisma)]
+    Aggregator -->|7. Verified Webhook| Alerts[Discord / Telegram Alert Dispatcher]
 ```
 
 ---
 
-## Core Features and Implementation Details
+## Core Security Guarantees & Features
 
-### 1. Real-Time Deep Scan Engine
-I implemented the URL scanner as a live streaming diagnostic tool rather than a static REST request. When a user submits a URL, the client opens an EventSource connection to `/api/scan/stream`, which progressively pushes diagnostics:
-- Network Reconnaissance: I used Node.js `dns/promises` to resolve A and AAAA records, detecting NXDOMAIN errors and invalid host resolutions.
-- SSL/TLS Certificate Analysis: Using Node.js `tls.connect`, I extracted and parsed peer certificates to verify cipher validity, issuing authorities, and expiration dates.
-- Threat Intelligence Aggregation: The engine queries VirusTotal API v3, Google Safe Browsing API v4, and AbuseIPDB to check if the target hostname or resolved IP address has been blacklisted or reported for malicious activity.
-- GeoIP and Security Header Inspection: Resolves server geolocations (country, city, coordinates) and inspects critical HTTP security headers including HSTS, Content-Security-Policy, and X-Frame-Options.
-- Lexical and Heuristic Detection: In `src/lib/heuristics.ts`, I created a mathematical evaluation model that calculates domain Shannon entropy to identify algorithmic domain generation (DGA), evaluates IP-based hostnames, detects excessive length, counts subdomains, monitors suspicious keyword frequencies, and flags credential masking syntax (such as `@` symbols).
-- Severity Override Matrix: I structured a weighted scoring algorithm that normalizes risk from 0 to 100 and applies critical overrides when external databases flag known malware or phishing campaigns.
-- Client-Side Report Generation: I integrated `jsPDF` and `html2canvas` into the scanning interface, allowing security analysts to export audit-ready PDF reports with a single click.
+### 1. SSRF & Egress Network Protection (`src/lib/ssrf.ts`)
+- **Pre-flight DNS Inspection**: Resolves both `A` and `AAAA` records, rejecting any target that resolves to private (RFC 1918), link-local, carrier-grade NAT (RFC 6598), loopback (`127.0.0.0/8`), or cloud metadata endpoints (`169.254.169.254`, `100.100.100.200`).
+- **Alternate IP Format Normalization**: Validates and normalizes decimal (`2130706433`), hex (`0x7f000001`), octal (`0177.0.0.1`), and IPv4-mapped IPv6 (`::ffff:127.0.0.1`) addresses.
+- **DNS Rebinding Prevention**: Outbound sockets connect directly to the verified pinned IP address while preserving the canonical `Host` and TLS `servername` headers.
+- **Hop-by-Hop Redirect Validation**: All HTTP redirects are inspected manually (`redirect: 'manual'`), re-resolving and re-validating the scheme, hostname, port, and IP range at every hop (max 5 hops).
+- **Protocol & Port Constraints**: Outbound traffic is restricted strictly to `http:` and `https:` on standard web ports (`80`, `443`, `8080`, `8443`). Credentials in URLs (`user:pass@host`) are rejected.
 
-### 2. Interactive 3D WebGL Threat Map
-To visualize attacks globally, I built an interactive 3D globe using `@react-three/fiber`, `@react-three/drei`, and `three`:
-- Procedural Continents: Instead of relying on heavy raster textures, I generated 15,000 points arranged on a Fibonacci sphere. I applied multi-octave Simplex noise (`simplex-noise`) to procedurally compute landmass boundaries and ocean grids directly on the GPU.
-- Custom Shaders: I wrote GLSL vertex and fragment shaders for the atmospheric glow, calculating normal vectors against camera angles to produce a realistic Fresnel halo.
-- Dynamic Attack Arcs: In `ThreatArcs.tsx`, I mapped latitude and longitude coordinates into 3D Cartesian vectors. Using quadratic bezier curves, the system renders arcs from origin cyber hubs to target locations, animating glowing particle light sources and terminal impact ripples.
-- Real-Time SSE Feed: The map connects to `/api/telemetry/stream` via my custom React hook `useRealtimeThreats`. It polls the database every two seconds, updating live telemetry metrics, connection latencies, and active threat logs.
-- Map HUD Controls: Analysts can filter visible attacks by type (Malware, Phishing, Botnet) or pause the simulation to inspect active telemetry snapshots.
+### 2. Cryptographic TLS/SSL Verification (`src/lib/tls-probe.ts`)
+- **Strict Root CA Validation**: TLS connections run with `rejectUnauthorized: true` against the trusted root certificate store. Unauthorized certificates are **never** reported as valid.
+- **Hostname Identity Enforcement**: Uses SNI and SAN verification (`tls.checkServerIdentity`) to ensure certificate subject matches requested hostname.
+- **Explicit Status Model**: Accurately categorizes `VALID`, `EXPIRED`, `SELF_SIGNED`, `HOSTNAME_MISMATCH`, `UNTRUSTED_ROOT`, `REVOKED`, `UNENCRYPTED_HTTP`, `TIMEOUT`, and `CONNECTION_REFUSED`.
+- **Diagnostic Inspection**: When a certificate fails validation, a secondary inspection captures issuer and expiry metadata strictly for triage display, without marking the result valid.
 
-### 3. Automated Threat Ingestion
-I developed an ingestion endpoint at `/api/cron/ingest` designed to run on a scheduled cron trigger:
-- It queries the abuse.ch URLhaus API for recently reported malicious URLs.
-- The payload is sanitized and mapped into the Prisma `ThreatTelemetry` model.
-- Batch inserts are written to PostgreSQL, keeping the threat database populated with fresh telemetry data.
+### 3. Threat Intelligence Semantics & Abstention (`src/lib/threat-intel.ts`)
+- **Explicit Provider Status**: Models provider states independently (`clean`, `malicious`, `suspicious`, `not_found`, `timeout`, `quota_exhausted`, `disabled`, `unknown`, `error`).
+- **No False Clean Results**: Missing API keys, network timeouts, or "not found" responses are never converted into a "clean" or "safe" result.
+- **Automated Abstention Policy**: If all external reputation engines are disabled, the scanner outputs an `INCONCLUSIVE` verdict with explicit disclosures rather than an unsupported clean claim.
+- **Evidence Dimensions**: Separates heuristic score, provider detections, TLS status, and network reachability into distinct audit trails.
 
-### 4. Enterprise Audit Logging
-In `AuditLog.tsx`, I created a comprehensive activity feed that monitors scan outcomes, configuration adjustments, and user authentications:
-- Interactive Physics: Table rows utilize `framer-motion` spring physics to react with smooth 3D tilt angles based on cursor movement.
-- Severity Filtering: Logs can be filtered by execution status (Success, Failed, Pending) and severity levels (Low, Medium, High, Critical).
+### 4. Webhook & Integration Destination Safety (`src/lib/webhooks.ts`)
+- **Strict Destination Whitelisting**: Discord webhooks are validated against canonical patterns (`https://discord.com/api/webhooks/<id>/<token>`). Arbitrary external URLs are rejected.
+- **Telegram Credential Schemas**: Bot tokens and chat IDs are enforced using strict structural schemas.
+- **Secret Redaction**: Webhook URLs and bot tokens are masked in API responses and audit logs (`••••••••`).
+- **Anti-Abuse Rate Limiting**: Setup and test endpoints enforce sliding-window rate limits (max 5 requests per minute per user).
 
-### 5. Multi-Platform Alert Dispatcher
-In `NotificationSetup.tsx` and `/api/notifications`, I built alert integrations for operations teams:
-- Discord Webhooks: Sends formatted rich embeds with operational status codes and timestamps directly to configured channels.
-- Telegram Bot API: Delivers encrypted push notifications to designated chat IDs using official bot tokens.
-- Interactive Setup Wizard: Includes a step-by-step verification process that sends test payloads to validate webhook configurations before activation.
-
-### 6. Design System and Visual Engineering
-I crafted the user experience to feel responsive, aesthetic, and professional:
-- WebGL Particle Background: Built with custom shaders in `ShaderBackground.tsx`, rendering 15,000 interactive particles that react to cursor coordinates, propagate wave equations, and blend neon gradients.
-- Glassmorphism UI: Encapsulated inside `GlassCard.tsx`, combining backdrop blur, subtle borders, and optional cursor-following 3D perspective tilts.
-- Physics-Based Controls: Designed `MagneticButton.tsx` with spring physics and light-sweep animations that gravitate toward user hover states.
-- Performance Smooth Scrolling: Synchronized Lenis smooth scroll with the GSAP ticker in `LenisProvider.tsx`. I disabled touch synchronization on mobile devices to retain native hardware scrolling performance.
-- Kinetic Typography: Engineered text-scramble decoders in `HeroSection.tsx` and a startup preloader in `Preloader.tsx` using GSAP timelines.
-
----
-
-## Tech Stack
-
-### Core Framework and Language
-- Next.js 16 (App Router)
-- React 19
-- TypeScript 5
-- Node.js runtime with native `dns` and `tls` modules
-
-### 3D Graphics and Shaders
-- Three.js
-- React Three Fiber (`@react-three/fiber`)
-- React Three Drei (`@react-three/drei`)
-- Simplex Noise (`simplex-noise`)
-- Custom GLSL Shaders
-
-### Animations and Styling
-- Tailwind CSS v4
-- GSAP 3 with ScrollTrigger
-- Framer Motion 12
-- Lenis (Smooth scroll orchestrator)
-
-### Database and Authentication
-- PostgreSQL (Hosted via Supabase or Neon)
-- Prisma ORM 7 (`@prisma/client`)
-- NextAuth.js v5 (Auth.js beta)
-- Google and GitHub OAuth providers
-
-### Reporting and Utilities
-- jsPDF and html2canvas (PDF export engine)
-- clsx and tailwind-merge (Class composition)
-- date-fns (Date formatting)
+### 5. Multi-User Tenant Isolation & Database Caching (`src/lib/db.ts`)
+- **Hot-Reload Singleton**: Properly caches the PrismaClient and pg pool across development HMR cycles, preventing pool exhaustion.
+- **Graceful Shutdown**: Hooks `SIGINT`, `SIGTERM`, and `beforeExit` to disconnect database pools cleanly.
+- **User Scoping**: Scans, audit logs, and notification integrations are strictly scoped to verified user sessions with deny-by-default authorization.
 
 ---
 
@@ -142,94 +75,48 @@ I crafted the user experience to feel responsive, aesthetic, and professional:
 
 ```
 guardai/
+├── .github/workflows/
+│   └── ci.yml                 # Clean-lockfile CI pipeline (lint, typecheck, test, build)
+├── docs/
+│   ├── THREAT_MODEL.md        # Comprehensive product threat model & attack trees
+│   └── INCIDENT_RUNBOOK.md    # Incident playbooks (SSRF, credential leak, provider outage)
 ├── prisma/
-│   ├── schema.prisma              # Database schema definitions
-│   └── prisma.config.ts           # Prisma CLI runtime configuration
-├── public/                        # Static assets and icons
+│   ├── schema.prisma          # Database schema (User, Scan, Notification, ThreatTelemetry)
+│   └── prisma.config.ts       # Prisma runtime configuration
 ├── src/
-│   ├── app/                       # Next.js App Router routes
-│   │   ├── api/                   # Server endpoints
-│   │   │   ├── cron/ingest/       # Automated threat feed ingestion
-│   │   │   ├── notifications/     # Webhook dispatcher (Discord, Telegram)
-│   │   │   ├── scan/              # URL scanning (POST handler)
-│   │   │   │   └── stream/        # Real-time SSE deep scan pipeline
-│   │   │   ├── telemetry/stream/  # Real-time SSE threat telemetry stream
-│   │   │   └── threats/           # Static threat endpoints
-│   │   ├── audit/                 # Audit logging dashboard page
-│   │   ├── auth/                  # Authentication pages (login, signup)
-│   │   ├── notifications/         # Notification integration management page
-│   │   ├── scan/                  # Deep scan interface page
-│   │   ├── threats/               # 3D telemetry threat map page
-│   │   ├── globals.css            # Tailwind theme tokens and custom styling
-│   │   ├── layout.tsx             # Root layout with fonts, preloader, background
-│   │   └── page.tsx               # Landing page with capabilities and metrics
-│   ├── components/                # React component library
-│   │   ├── audit/                 # AuditLog and AuditRow components
-│   │   ├── auth/                  # AuthForm and social login triggers
-│   │   ├── hero/                  # HeroSection with text scramble animations
-│   │   ├── layout/                # Navbar and responsive navigation drawers
-│   │   ├── notifications/         # NotificationSetup integration wizard
-│   │   ├── preloader/             # Asset decryption initialization screen
-│   │   ├── providers/             # Lenis smooth scroll provider
-│   │   ├── scan/                  # ScanInterface and PDF generation
-│   │   ├── threatmap/             # CyberGlobe, ThreatArcs, and ThreatMap HUD
-│   │   ├── ui/                    # GlassCard and MagneticButton primitives
-│   │   └── webgl/                 # ShaderBackground particle canvas
-│   ├── hooks/                     # Custom React hooks
-│   │   └── useRealtimeThreats.ts  # SSE consumer for threat telemetry
-│   └── lib/                       # Utility libraries and services
-│       ├── auth.ts                # NextAuth provider configurations
-│       ├── db.ts                  # Prisma Client singleton
-│       ├── gsap.ts                # GSAP registration and helpers
-│       ├── heuristics.ts          # Lexical entropy and pattern analysis engine
-│       └── utils.ts               # Class merging and interpolation helpers
-├── .env.local                     # Local environment configurations
-├── next.config.ts                 # Next.js compiler settings
-├── package.json                   # Project dependencies and script declarations
-├── postcss.config.mjs             # PostCSS plugins
-├── tsconfig.json                  # TypeScript compiler configuration
-└── README.md                      # Project documentation
-```
-
----
-
-## Database Architecture
-
-I defined the database schema in `prisma/schema.prisma` using PostgreSQL:
-
-- User: Stores credentials, profile details, and account relationships.
-- Account: Manages OAuth provider bindings for Google and GitHub accounts.
-- Session: Handles active authentication sessions for NextAuth.
-- VerificationToken: Secures passwordless or token-based verification workflows.
-- Scan: Persists historical scan executions, associated user IDs, risk scores, threat levels, and detailed JSON outputs.
-- Notification: Records webhook configurations and operational statuses for Discord and Telegram.
-- ThreatTelemetry: Stores geographical coordinates, threat categories, timestamps, and domain names captured from threat feeds.
-- ScansAudit: Logs compliance entries, timestamps, and scan execution statuses.
-
----
-
-## Environment Configuration
-
-To run this platform, I configure the following environment variables in `.env.local`:
-
-```env
-# Database Connection
-DATABASE_URL="postgresql://user:password@host:port/dbname"
-
-# NextAuth Configuration
-NEXTAUTH_URL="http://localhost:3000"
-NEXTAUTH_SECRET="your-generated-jwt-secret"
-
-# OAuth Authentication Providers
-GOOGLE_CLIENT_ID="your-google-client-id"
-GOOGLE_CLIENT_SECRET="your-google-client-secret"
-GITHUB_CLIENT_ID="your-github-client-id"
-GITHUB_CLIENT_SECRET="your-github-client-secret"
-
-# Threat Intelligence External APIs
-VIRUSTOTAL_API_KEY="your-virustotal-api-v3-key"
-GOOGLE_SAFE_BROWSING_API_KEY="your-google-safe-browsing-api-key"
-ABUSEIPDB_API_KEY="your-abuseipdb-api-key"
+│   ├── app/
+│   │   ├── api/
+│   │   │   ├── alerts/        # Alert channel configuration & test endpoints
+│   │   │   ├── audit/         # Authenticated audit log API
+│   │   │   ├── cron/ingest/   # URLhaus threat feed ingestion
+│   │   │   ├── notifications/ # Secure sample notification dispatcher
+│   │   │   ├── scan/          # Synchronous & real-time SSE scan endpoints
+│   │   │   └── telemetry/     # Real-time threat feed & SSE stream
+│   │   ├── audit/             # Audit logs page
+│   │   ├── notifications/     # Alert configuration UI
+│   │   ├── scan/              # Deep scan interface
+│   │   └── threats/           # 3D interactive WebGL threat map
+│   ├── lib/
+│   │   ├── audit.ts           # Structured audit logging
+│   │   ├── auth.ts            # NextAuth configuration
+│   │   ├── db.ts              # Prisma singleton & pool lifecycle
+│   │   ├── env.ts             # Runtime environment validation
+│   │   ├── heuristics.ts      # Shannon entropy & lexical analysis
+│   │   ├── notifications.ts   # Notification dispatcher service
+│   │   ├── ssrf.ts            # SSRF protection, DNS validation, pinned transport
+│   │   ├── threat-intel.ts    # Threat intelligence matrix & abstention policy
+│   │   ├── tls-probe.ts       # Cryptographic TLS handshake & cert verification
+│   │   └── webhooks.ts        # Webhook validation, token masking, rate limits
+├── tests/
+│   ├── auth-isolation.test.ts # Negative authorization & user-scoping tests
+│   ├── heuristics.test.ts     # Shannon entropy & lexical heuristic tests
+│   ├── ssrf.test.ts           # Comprehensive 20-vector SSRF test suite
+│   ├── threat-intel.test.ts   # Threat intelligence semantics & abstention tests
+│   ├── tls.test.ts            # TLS certificate verification tests
+│   └── webhooks.test.ts       # Webhook pattern matching & rate limit tests
+├── package.json               # Package manifest with npm@11.19.0 lockfile
+├── SECURITY.md                # Vulnerability disclosure policy & SLAs
+└── README.md                  # Project documentation
 ```
 
 ---
@@ -238,64 +125,105 @@ ABUSEIPDB_API_KEY="your-abuseipdb-api-key"
 
 ### Prerequisites
 - Node.js 20.x or higher
-- pnpm package manager (`pnpm -v`)
+- npm 11.x (`npm -v`)
 - PostgreSQL database instance
 
-### Installation and Setup
+### Local Setup Instructions
 
-1. Clone the repository:
+1. **Clone the repository:**
+   ```bash
+   git clone https://github.com/KatkamKoushik/guardai.git
+   cd guardai
+   ```
+
+2. **Install dependencies from the clean lockfile:**
+   ```bash
+   npm ci
+   ```
+
+3. **Configure Environment Variables:**
+   Copy the example environment configuration into `.env.local`:
+   ```bash
+   cp .env.example .env.local
+   ```
+   Configure the following required variables:
+   ```env
+   DATABASE_URL="postgresql://user:password@localhost:5432/guardai"
+   NEXTAUTH_URL="http://localhost:3000"
+   NEXTAUTH_SECRET="a-secure-random-secret-string-at-least-32-characters"
+
+   # External Threat Intelligence (Optional — scanner abstains gracefully if omitted)
+   VIRUSTOTAL_API_KEY="your-virustotal-api-key"
+   GOOGLE_SAFE_BROWSING_API_KEY="your-google-safe-browsing-key"
+   ABUSEIPDB_KEY="your-abuseipdb-api-key"
+   URLHAUS_KEY="your-urlhaus-api-key"
+   ```
+
+4. **Generate Prisma Client & Synchronize Database:**
+   ```bash
+   npx prisma generate
+   npx prisma db push
+   ```
+
+5. **Run the Verification Test Suite:**
+   ```bash
+   npm test
+   ```
+
+6. **Start the Development Server:**
+   ```bash
+   npm run dev
+   ```
+   Open [http://localhost:3000](http://localhost:3000) to access GuardAI.
+
+---
+
+## 🐳 Docker Container Deployment
+
+GuardAI includes a multi-stage, rootless, production-optimized container setup with automated PostgreSQL orchestration:
+
 ```bash
-git clone https://github.com/KatkamKoushik/guardai.git
-cd guardai
+# Build and boot the entire stack (Next.js app + PostgreSQL 16)
+docker compose up --build -d
+
+# Check stack liveness and health status
+docker compose ps
 ```
 
-2. Install project dependencies:
-```bash
-pnpm install
-```
+The container runs with non-root security privileges (`nextjs:nodejs` UID 1001) and includes automated healthcheck polling against `/api/ready`.
 
-3. Generate the Prisma database client:
-```bash
-pnpm db:generate
-```
+---
 
-4. Apply database migrations:
-```bash
-pnpm db:push
-# or
-pnpm db:migrate
-```
+## 🩺 Observability & Health Probes
 
-5. Start the development server:
-```bash
-pnpm dev
-```
-
-6. Open your browser and navigate to:
-```
-http://localhost:3000
-```
+- **Liveness Probe** (`GET /api/health`): Returns HTTP 200 with runtime diagnostics, process uptime, Node.js version, and RSS/heap memory utilization.
+- **Readiness Probe** (`GET /api/ready`): Performs a deep PostgreSQL round-trip ping (`SELECT 1`), returning HTTP 200 when ready and HTTP 503 when disconnected.
+- **API Documentation**: Complete OpenAPI 3.1 schema available in [`docs/openapi.yaml`](docs/openapi.yaml).
 
 ---
 
 ## Available Scripts
 
-I defined several scripts in `package.json` to simplify maintenance:
-
-- `pnpm dev`: Boots the Next.js development server with Turbopack support.
-- `pnpm build`: Runs Prisma client generation followed by the Next.js production build.
-- `pnpm start`: Launches the compiled production application.
-- `pnpm db:generate`: Regenerates the Prisma client library.
-- `pnpm db:migrate`: Executes Prisma migration scripts against the configured database.
-- `pnpm db:push`: Synchronizes the Prisma schema directly to the database without generating migrations.
-- `pnpm db:studio`: Launches Prisma Studio GUI for exploring and managing records.
+| Script | Purpose |
+|--------|---------|
+| `npm run dev` | Starts Next.js development server with Turbopack. |
+| `npm run build` | Builds the optimized production application. |
+| `npm run start` | Boots the compiled production server. |
+| `npm run typecheck` | Runs TypeScript compiler checks without emitting files (`tsc --noEmit`). |
+| `npm test` | Runs the full Vitest security, regression, and unit test suite. |
+| `npm run test:coverage` | Generates a test coverage report across all modules. |
 
 ---
 
-## Security and Engineering Standards
+## Known Limitations & Roadmap
 
-Throughout this project, I prioritized defensive development patterns:
-- Zero Hardcoded Secrets: All API keys and connection strings are managed strictly through environment variables.
-- Safe Stream Lifecycle: Every Server-Sent Event endpoint includes abort event listeners to release open socket connections and prevent memory leaks.
-- Client-Side Hardware Efficiency: WebGL buffers and particle arrays avoid per-frame allocations by pre-allocating typed arrays (`Float32Array`).
-- Touch-Safe Scroll Architecture: Smooth scrolling libraries are decoupled from touch events on mobile platforms to prevent GPU overhead and UI jank.
+- **External Provider Dependency**: When VirusTotal and Google Safe Browsing API keys are absent, GuardAI abstains with an `INCONCLUSIVE` verdict rather than guessing. Adding API keys activates full multi-engine correlation.
+- **RDAP Rate Limits**: RDAP domain age lookups rely on open IANA bootstrap servers, which may rate-limit high-frequency bulk queries.
+- **Distributed Rate Limiting**: The current sliding-window rate limiter runs in-process. A planned Redis/Vercel KV adapter is slated for multi-region serverless deployments.
+
+---
+
+## License & Security Contact
+
+- **License**: MIT License (see [LICENSE](LICENSE)).
+- **Security Inquiries**: Refer to [SECURITY.md](SECURITY.md) or contact `koushikkatkam@gmail.com`.

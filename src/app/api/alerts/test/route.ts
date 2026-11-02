@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
-import { notifyUserForScan, AlertData } from "@/lib/notifications";
+import { notifyUserForScan, AlertData, sendDiscordWebhook, sendTelegramAlert } from "@/lib/notifications";
 import { prisma } from "@/lib/db";
+import { checkRateLimit } from "@/lib/webhooks";
 
 export async function POST(req: Request) {
   try {
@@ -18,24 +19,39 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
-    const { platform } = await req.json();
+    // Rate limit test alerts: max 5 per minute
+    const rateCheck = checkRateLimit(`alert-test:${user.id}`, 5, 60_000);
+    if (!rateCheck.allowed) {
+      return NextResponse.json(
+        { error: "Too many test requests. Please wait a moment." },
+        { status: 429 }
+      );
+    }
 
-    // Mock a realistic malware alert
+    let body: { platform?: string };
+    try {
+      body = await req.json();
+    } catch {
+      body = {};
+    }
+
+    const { platform } = body;
+
     const mockAlertData: AlertData = {
-      url: "http://wicar.org/test/eicar.com",
+      url: "https://test-threat.guardai.security",
       score: 95,
       severity: "critical",
-      explanation: "The target URL hosts an active remote code execution payload flagged by 19 malware vendors.",
+      explanation: "Test Alert: GuardAI detected a simulated high-risk malware threat.",
       vtScore: "19 / 92 engines flagged as Malicious",
       sslStatus: "UNENCRYPTED (HTTP Only)",
       missingHeaders: "HSTS, X-Frame-Options, CSP",
       mlScore: "Shannon Entropy: 3.096",
-      action: "Do not navigate to this site. Block traffic at firewall.",
+      action: "Test alert verified successfully. No action required.",
       scanId: "test-scan-id-123",
     };
 
-    // If platform is specified, we bypass the DB check and just send the test alert to that specific platform's config
     if (platform) {
+      // Must belong to this user
       const notif = await prisma.notification.findFirst({
         where: { userId: user.id, platform, isActive: true },
       });
@@ -44,23 +60,22 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: "Integration not found or not active" }, { status: 404 });
       }
 
-      const config = notif.config as any;
-      
+      const config = notif.config as Record<string, any>;
+
       if (platform === "discord" && config.webhookUrl) {
-        const { sendDiscordWebhook } = await import("@/lib/notifications");
         await sendDiscordWebhook(config.webhookUrl, mockAlertData);
       } else if (platform === "telegram" && config.botToken && config.chatId) {
-        const { sendTelegramAlert } = await import("@/lib/notifications");
         await sendTelegramAlert(config.botToken, config.chatId, mockAlertData);
+      } else {
+        return NextResponse.json({ error: "Incomplete configuration for platform" }, { status: 400 });
       }
     } else {
-      // Default: test through the standard dispatch flow (which checks sensitivity)
       await notifyUserForScan(user.id, mockAlertData);
     }
 
-    return NextResponse.json({ success: true });
-  } catch (error) {
+    return NextResponse.json({ success: true, message: "Test alert dispatched" });
+  } catch (error: any) {
     console.error("Test alert error:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json({ error: error.message || "Failed to dispatch test alert" }, { status: 500 });
   }
 }

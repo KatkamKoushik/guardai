@@ -176,10 +176,10 @@ export function analyzeURL(urlStr: string): HeuristicResult {
     };
   }
 
-  const hostname  = url.hostname.toLowerCase();
-  const fullUrl   = urlStr.toLowerCase();
-  const path      = url.pathname + url.search;
-  const length    = urlStr.length;
+  const hostname = url.hostname.toLowerCase();
+  const fullUrl = urlStr.toLowerCase();
+  const path = url.pathname + url.search;
+  const length = urlStr.length;
 
   // ── Signal: Dangerous scheme in effective URL ──────────────────────────
   if (DANGEROUS_SCHEME_RE.test(url.protocol)) {
@@ -193,7 +193,7 @@ export function analyzeURL(urlStr: string): HeuristicResult {
   // ── Signal: Raw IP Address as Hostname ────────────────────────────────
   const ipv4Re = /^(?:\d{1,3}\.){3}\d{1,3}$/;
   const ipv6Re = /^\[?[0-9a-fA-F:]+\]?$/;
-  const hasIP  = ipv4Re.test(hostname) || ipv6Re.test(hostname);
+  const hasIP = ipv4Re.test(hostname) || ipv6Re.test(hostname);
   if (hasIP) flags.push("IP address used as hostname (no domain name)");
 
   let entropy = 0;
@@ -205,6 +205,14 @@ export function analyzeURL(urlStr: string): HeuristicResult {
   let isSuspiciousTLD = false;
   let isHexEncoded = false;
   let matchedLegitBrand: string | undefined;
+
+  // Deobfuscate leet-speak for brand impersonation checking (e.g. paypa1 → paypal, g00gle → google)
+  const deobfuscated = hostname
+    .replace(/0/g, "o")
+    .replace(/1/g, "l")
+    .replace(/3/g, "e")
+    .replace(/4/g, "a")
+    .replace(/5/g, "s");
 
   if (!hasIP) {
     // ── Signal: Shannon Entropy ────────────────────────────────────────────
@@ -244,13 +252,13 @@ export function analyzeURL(urlStr: string): HeuristicResult {
     }
 
     // ── Signal: Suspicious Keywords in Domain ─────────────────────────────
-    matchedLegitBrand = BRAND_NAMES.find(brand => 
+    matchedLegitBrand = BRAND_NAMES.find(brand =>
       hostname === `${brand}.com` || hostname.endsWith(`.${brand}.com`)
     );
 
     const matchedKeywords: string[] = [];
     for (const kw of SUSPICIOUS_KEYWORDS) {
-      if (hostname.includes(kw)) {
+      if (hostname.includes(kw) || deobfuscated.includes(kw)) {
         if (matchedLegitBrand === kw) {
           continue;
         }
@@ -264,9 +272,14 @@ export function analyzeURL(urlStr: string): HeuristicResult {
       );
     }
 
-    // ── Signal: Brand Typosquatting ───────────────────────────────────────
+    // ── Signal: Brand Typosquatting (direct or leet-speak) ────────────────
     for (const brand of BRAND_NAMES) {
-      if (hostname.includes(brand) && !hostname.endsWith(`.${brand}.com`) && hostname !== `${brand}.com`) {
+      const isImpersonating =
+        (hostname.includes(brand) || deobfuscated.includes(brand)) &&
+        !hostname.endsWith(`.${brand}.com`) &&
+        hostname !== `${brand}.com`;
+
+      if (isImpersonating) {
         flags.push(`Domain impersonates brand "${brand}" (typosquatting)`);
         break;
       }
@@ -289,9 +302,7 @@ export function analyzeURL(urlStr: string): HeuristicResult {
   const pathTokens = path.split(/[\/\-_\.=&?]/).filter(Boolean);
   let pathSuspiciousCount = 0;
   const pathMatchedKeywords: string[] = [];
-  
-  // If the domain is a legitimate known brand (e.g. google.com), do not penalize path keywords like 'login'
-  // as it is common and legitimate for brands to use such paths.
+
   if (!matchedLegitBrand) {
     for (const token of pathTokens) {
       const lowerToken = token.toLowerCase();
@@ -341,40 +352,44 @@ export function analyzeURL(urlStr: string): HeuristicResult {
   let score = 0;
 
   // Hard signals
-  if (hasIP)                         score += 40;
-  if (fullUrl.includes("@"))         score += 30;
-  if (isPunycode)                    score += 25;
-  if (isSuspiciousTLD)               score += 20;
-  if (malwareExts.test(path))        score += 35;
+  if (hasIP) score += 40;
+  if (fullUrl.includes("@")) score += 30;
+  if (isPunycode) score += 25;
+  if (isSuspiciousTLD) score += 20;
+  if (malwareExts.test(path)) score += 35;
 
   // Entropy signals
-  if (entropy > 4.5)                 score += 25;
-  else if (entropy > 4.0)            score += 12;
+  if (entropy > 4.5) score += 25;
+  else if (entropy > 4.0) score += 12;
 
   // Length signals
-  if (length > 100)                  score += 15;
-  else if (length > 75)              score += 8;
+  if (length > 100) score += 15;
+  else if (length > 75) score += 8;
 
   // Structural signals
-  if (subdomainCount > 3)            score += 20;
-  else if (subdomainCount > 2)       score += 10;
+  if (subdomainCount > 3) score += 20;
+  else if (subdomainCount > 2) score += 10;
 
-  if (hyphenCount > 4)               score += 15;
-  else if (hyphenCount > 2)          score += 7;
+  if (hyphenCount > 4) score += 15;
+  else if (hyphenCount > 2) score += 7;
 
-  if (isNumberSubstituted)           score += 10;
-  if (pathDepth > 5)                 score += 8;
-  if (path.includes("//"))           score += 10;
-  if (isHexEncoded)                  score += 15;
+  if (isNumberSubstituted) score += 10;
+  if (pathDepth > 5) score += 8;
+  if (path.includes("//")) score += 10;
+  if (isHexEncoded) score += 15;
 
   // Keyword / brand signals
   score += Math.min(suspiciousWordsCount * 12, 40);
   if (pathSuspiciousCount > 0) score += Math.min(pathSuspiciousCount * 15, 30);
 
   if (!hasIP) {
-    // Brand typosquat — recheck inline (avoids double loop)
     for (const brand of BRAND_NAMES) {
-      if (hostname.includes(brand) && !hostname.endsWith(`.${brand}.com`) && hostname !== `${brand}.com`) {
+      const isImpersonating =
+        (hostname.includes(brand) || deobfuscated.includes(brand)) &&
+        !hostname.endsWith(`.${brand}.com`) &&
+        hostname !== `${brand}.com`;
+
+      if (isImpersonating) {
         score += 30;
         break;
       }
@@ -382,8 +397,8 @@ export function analyzeURL(urlStr: string): HeuristicResult {
   }
 
   // Special char ratio
-  if (specialCharRatio > 0.15)       score += 15;
-  else if (specialCharRatio > 0.1)   score += 8;
+  if (specialCharRatio > 0.15) score += 15;
+  else if (specialCharRatio > 0.1) score += 8;
 
   // Open redirect parameter
   if (/[?&](redirect|redir|url|next|goto|return|returnurl|r)=/i.test(path)) score += 10;
